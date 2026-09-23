@@ -6,7 +6,7 @@ import Observation
 final class AppModel {
   enum SessionState: Equatable { case booting, signedOut, ready }
   enum Section: String, CaseIterable, Identifiable {
-    case messages, servers, friends, settings
+    case messages, servers, friends, workspace, settings
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
     var systemImage: String {
@@ -14,6 +14,7 @@ final class AppModel {
       case .messages: "message.fill"
       case .servers: "rectangle.3.group.fill"
       case .friends: "person.2.fill"
+      case .workspace: "square.grid.2x2.fill"
       case .settings: "gearshape.fill"
       }
     }
@@ -77,6 +78,7 @@ final class AppModel {
   var sessionState: SessionState = .booting
   var session: PWSession?
   var selectedSection: Section = .messages
+  var workspaceStartFragment: String?
   var selectedRoom: Room?
   var selectedServerID: PlainwireID?
   var selectedChannelID: PlainwireID?
@@ -178,7 +180,10 @@ final class AppModel {
   }
 
   func refresh() async {
-    do { try await bootstrap(incremental: true) } catch PlainwireAPIError.notAuthenticated {
+    do {
+      session = try await api.restoreSession()
+      try await bootstrap(incremental: true)
+    } catch PlainwireAPIError.notAuthenticated {
       await logout()
     } catch { errorMessage = error.localizedDescription }
   }
@@ -204,6 +209,177 @@ final class AppModel {
       errorMessage = error.localizedDescription
       return []
     }
+  }
+
+  func profile(id: PlainwireID) async -> PWProfile? {
+    do { return try await api.profile(id: id) }
+    catch { errorMessage = error.localizedDescription; return nil }
+  }
+
+  func saveProfile(
+    displayName: String, bio: String, status: String, avatarURL: String,
+    bannerURL: String, theme: String
+  ) async -> Bool {
+    do {
+      try await api.updateProfile(
+        displayName: displayName, bio: bio, status: status, avatarURL: avatarURL,
+        bannerURL: bannerURL, theme: theme)
+      session = try await api.restoreSession()
+      return true
+    } catch { errorMessage = error.localizedDescription; return false }
+  }
+
+  func accountSessions() async -> [PWAccountSession] {
+    do { return try await api.accountSessions() }
+    catch { errorMessage = error.localizedDescription; return [] }
+  }
+
+  func logoutOtherSessions() async -> Bool {
+    do { _ = try await api.logoutOtherSessions(); return true }
+    catch { errorMessage = error.localizedDescription; return false }
+  }
+
+  func changePassword(current: String, new: String) async -> Bool {
+    do { try await api.changePassword(current: current, new: new); return true }
+    catch { errorMessage = error.localizedDescription; return false }
+  }
+
+  func changeUsername(current: String, new: String) async -> Bool {
+    guard let expected = session?.user.username else { return false }
+    do {
+      try await api.changeUsername(current: current, new: new, expected: expected)
+      session = try await api.restoreSession()
+      return true
+    } catch { errorMessage = error.localizedDescription; return false }
+  }
+
+  func updateEmail(_ email: String, password: String) async -> String? {
+    do {
+      let result = try await api.updateEmail(email, password: password)
+      session = try await api.restoreSession()
+      return result.objectValue?["email_delivery"]?.boolValue == false
+        ? "Email saved, but the verification message could not be sent."
+        : "Email saved. Check your inbox for verification."
+    } catch { errorMessage = error.localizedDescription; return nil }
+  }
+
+  func removeEmail(password: String) async -> Bool {
+    do {
+      try await api.removeEmail(password: password)
+      session = try await api.restoreSession()
+      return true
+    } catch { errorMessage = error.localizedDescription; return false }
+  }
+
+  func resendEmailVerification() async -> String? {
+    do {
+      let result = try await api.resendEmailVerification()
+      if result.objectValue?["already_verified"]?.boolValue == true { return "Email is already verified." }
+      return result.objectValue?["email_delivery"]?.boolValue == false
+        ? "The verification message could not be sent."
+        : "Verification email sent."
+    } catch { errorMessage = error.localizedDescription; return nil }
+  }
+
+  func closeAccount(password: String, permanently: Bool) async -> Bool {
+    do {
+      if permanently { try await api.deleteAccount(password: password) }
+      else { try await api.disableAccount(password: password) }
+      await logout()
+      return true
+    } catch { errorMessage = error.localizedDescription; return false }
+  }
+
+  func createServer(name: String, description: String) async -> Bool {
+    do {
+      let result = try await api.createServer(name: name, description: description)
+      await refresh()
+      if let id = result.objectValue?["id"]?.intValue,
+        let server = servers.first(where: { $0.id == id }) { await openServer(server) }
+      return true
+    } catch { errorMessage = error.localizedDescription; return false }
+  }
+
+  func reloadServer(_ id: PlainwireID) async {
+    do {
+      serverDetails[id] = try await api.server(id: id)
+      await refresh()
+    } catch { errorMessage = error.localizedDescription }
+  }
+
+  func saveServer(id: PlainwireID, fields: [String: String]) async -> Bool {
+    do { try await api.updateServer(id: id, fields: fields); await reloadServer(id); return true }
+    catch { errorMessage = error.localizedDescription; return false }
+  }
+
+  func createCategory(serverID: PlainwireID, name: String) async -> Bool {
+    do { try await api.createCategory(serverID: serverID, name: name); await reloadServer(serverID); return true }
+    catch { errorMessage = error.localizedDescription; return false }
+  }
+
+  func createChannel(
+    serverID: PlainwireID, name: String, kind: String, categoryID: PlainwireID?
+  ) async -> Bool {
+    do {
+      try await api.createChannel(serverID: serverID, name: name, kind: kind, categoryID: categoryID)
+      await reloadServer(serverID)
+      return true
+    } catch { errorMessage = error.localizedDescription; return false }
+  }
+
+  func saveChannel(_ channel: PWChannel, name: String, topic: String) async -> Bool {
+    do {
+      try await api.updateChannel(id: channel.id, name: name, topic: topic)
+      await reloadServer(channel.serverId)
+      if selectedChannelID == channel.id,
+        let updated = serverDetails[channel.serverId]?.channels.first(where: { $0.id == channel.id }) {
+        await openChannel(updated)
+      }
+      return true
+    } catch { errorMessage = error.localizedDescription; return false }
+  }
+
+  func invites(serverID: PlainwireID) async -> [PWInvite] {
+    do { return try await api.invites(serverID: serverID) }
+    catch { errorMessage = error.localizedDescription; return [] }
+  }
+
+  func createInvite(serverID: PlainwireID, channelID: PlainwireID?) async -> PWInvite? {
+    do { return try await api.createInvite(serverID: serverID, channelID: channelID) }
+    catch { errorMessage = error.localizedDescription; return nil }
+  }
+
+  func revokeInvite(serverID: PlainwireID, code: String) async -> Bool {
+    do { try await api.revokeInvite(serverID: serverID, code: code); return true }
+    catch { errorMessage = error.localizedDescription; return false }
+  }
+
+  func invitePreview(code: String) async -> JSONValue? {
+    do { return try await api.invitePreview(code: code) }
+    catch { errorMessage = error.localizedDescription; return nil }
+  }
+
+  func joinInvite(code: String) async -> Bool {
+    do {
+      let result = try await api.joinInvite(code: code)
+      await refresh()
+      if let serverID = result.objectValue?["server_id"]?.intValue,
+        let server = servers.first(where: { $0.id == serverID }) { await openServer(server) }
+      return true
+    } catch { errorMessage = error.localizedDescription; return false }
+  }
+
+  func saveMemberProfile(
+    serverID: PlainwireID, nickname: String, bio: String, avatarURL: String
+  ) async -> Bool {
+    guard let userID = session?.user.id else { return false }
+    do {
+      try await api.updateMemberProfile(
+        serverID: serverID, userID: userID, nickname: nickname, bio: bio,
+        avatarURL: avatarURL)
+      await reloadServer(serverID)
+      return true
+    } catch { errorMessage = error.localizedDescription; return false }
   }
 
   func sendFriendRequest(to user: PWUser) async {
@@ -549,7 +725,17 @@ final class AppModel {
         await refreshMessage(messageID, room: room)
       }
     case "conversation_updated", "conversation_created", "conversation_members_changed",
-      "server_updated", "realtime_resync", "access_revoked":
+      "realtime_resync", "access_revoked":
+      scheduleSync(delay: .milliseconds(250))
+    case "server_updated", "channel_created", "channel_updated", "channel_moved",
+      "category_created", "category_updated", "category_deleted", "categories_reordered",
+      "member_joined", "server_member_removed", "server_member_banned",
+      "server_member_profile_updated", "server_member_roles_updated", "server_roles_updated":
+      if let serverID = event.payload["server_id"]?.intValue,
+        selectedServerID == serverID,
+        let updated = try? await api.server(id: serverID) {
+        serverDetails[serverID] = updated
+      }
       scheduleSync(delay: .milliseconds(250))
     case "presence_state":
       for (id, status) in event.statuses { livePresence[id] = status }

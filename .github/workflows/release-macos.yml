@@ -45,10 +45,17 @@ jobs:
               echo "No version tag to release."
               exit 0
             fi
+            app_version=$(awk '/MARKETING_VERSION = / { gsub(/;/, "", $3); print $3; exit }' Plainwire.xcodeproj/project.pbxproj)
+            if [[ ${tag#v} != "$app_version" ]]; then
+              echo "App version $app_version is awaiting its matching tag."
+              exit 0
+            fi
             assets=$(gh release view "$tag" --json assets --jq '.assets[].name' 2>/dev/null || true)
             if grep -Fxq 'Plainwire-macOS-universal.zip' <<< "$assets" &&
                grep -Fxq 'SHA256SUMS.txt' <<< "$assets" &&
-               grep -Fxq 'install-macos.sh' <<< "$assets"; then
+               grep -Fxq 'install-macos.sh' <<< "$assets" &&
+               grep -Fxq 'update-macos.sh' <<< "$assets" &&
+               grep -Fxq 'plainwire-swap' <<< "$assets"; then
               echo "Release $tag already has its install assets."
               exit 0
             fi
@@ -105,11 +112,13 @@ jobs:
           archive="$RUNNER_TEMP/plainwire-release/Plainwire-macOS-universal.zip"
           sums="$RUNNER_TEMP/plainwire-release/SHA256SUMS.txt"
           installer="$RUNNER_TEMP/plainwire-release/install-macos.sh"
+          updater="$RUNNER_TEMP/plainwire-release/update-macos.sh"
+          swap="$RUNNER_TEMP/plainwire-release/plainwire-swap"
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" "$archive" "$sums" "$installer" \
+            gh release create "$RELEASE_TAG" "$archive" "$sums" "$installer" "$updater" "$swap" \
               --title "$RELEASE_TAG" --generate-notes --verify-tag
           else
-            for asset in "$archive" "$sums" "$installer"; do
+            for asset in "$archive" "$sums" "$installer" "$updater" "$swap"; do
               name=$(basename "$asset")
               if ! gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' \
                 | grep -Fxq "$name"; then

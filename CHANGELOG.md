@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 1.2.0
+
+- Added native profile editing and member profile viewing.
+- Added account security, recovery email, active sessions, and account lifecycle controls.
+- Added server creation and joining, server appearance, per-server profiles, channels, categories, and invites.
+- Added the authenticated Workspace tab for advanced web features, including voice channel access.
+- Added an atomic Mac updater that verifies release downloads before swapping app bundles.
 
 - Switched the client to `plainwi.re`.
 - Added multiple file selection, spoiler attachments, and inline playback for MP4/MOV/M4V video.

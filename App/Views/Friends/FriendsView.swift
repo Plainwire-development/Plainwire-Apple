@@ -96,6 +96,7 @@ struct FriendsView: View {
 
 private struct SearchUserRow: View {
   @Environment(AppModel.self) private var model
+  @State private var showingProfile = false
   let user: PWUser
   let request: (PWUser) async -> Void
 
@@ -108,11 +109,18 @@ private struct SearchUserRow: View {
         Text("@\(user.username)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
       }
       Spacer(minLength: 10)
+      Button { showingProfile = true } label: {
+        Image(systemName: "person.crop.circle")
+      }
+      .adaptiveGlassButton()
+      .controlSize(.small)
+      .accessibilityLabel("View profile")
       Button("Add") { Task { await request(user) } }
         .adaptiveGlassButton(prominent: true)
         .controlSize(.small)
     }
     .padding(.vertical, 4)
+    .sheet(isPresented: $showingProfile) { PersonProfileSheet(userID: user.id) }
   }
 }
 
@@ -137,6 +145,7 @@ private struct FriendsEmptyRow: View {
 
 private struct FriendRow: View {
   @Environment(AppModel.self) private var model
+  @State private var showingProfile = false
   let friend: PWFriend
   let requestActions: Bool
 
@@ -159,6 +168,12 @@ private struct FriendRow: View {
           .lineLimit(1)
       }
       Spacer(minLength: 10)
+      Button { showingProfile = true } label: {
+        Image(systemName: "person.crop.circle")
+      }
+      .adaptiveGlassButton()
+      .controlSize(.small)
+      .accessibilityLabel("View profile")
       if requestActions {
         if friend.incoming {
           Button("Accept") { Task { await model.acceptFriend(friend.user) } }
@@ -183,6 +198,7 @@ private struct FriendRow: View {
       }
     }
     .padding(.vertical, 4)
+    .sheet(isPresented: $showingProfile) { PersonProfileSheet(userID: friend.user.id) }
   }
 
   private var statusColor: Color {
@@ -192,6 +208,59 @@ private struct FriendRow: View {
     case "away": .orange
     default: .secondary.opacity(0.65)
     }
+  }
+}
+
+struct PersonProfileSheet: View {
+  @Environment(AppModel.self) private var model
+  @Environment(\.dismiss) private var dismiss
+  let userID: PlainwireID
+  @State private var profile: PWProfile?
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        if let user = profile?.user {
+          VStack(alignment: .leading, spacing: 18) {
+            if let banner = model.mediaURL(user.bannerURL) {
+              AsyncImage(url: banner) { image in
+                image.resizable().scaledToFill()
+              } placeholder: { Color.secondary.opacity(0.12) }
+              .frame(height: 135).clipped().cornerRadius(16)
+            }
+            HStack(spacing: 16) {
+              RemoteAvatar(url: model.mediaURL(user.avatarURL),
+                           fallback: String(user.displayName.prefix(1)), size: 72)
+              VStack(alignment: .leading, spacing: 3) {
+                Text(user.displayName).font(.title2.bold())
+                Text("@\(user.username)").foregroundStyle(.secondary)
+              }
+            }
+            if !user.status.isEmpty {
+              Label(user.status, systemImage: "bubble.left")
+                .font(.subheadline)
+            }
+            if !user.bio.isEmpty { Text(user.bio).textSelection(.enabled) }
+            Text("Joined \(Date(timeIntervalSince1970: TimeInterval(user.createdAt) / 1000).formatted(date: .abbreviated, time: .omitted))")
+              .font(.caption).foregroundStyle(.secondary)
+            if user.id != model.session?.user.id {
+              Button {
+                Task { await model.startConversation(with: user); dismiss() }
+              } label: { Label("Message", systemImage: "message") }
+              .buttonStyle(.borderedProminent)
+            }
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(24)
+        } else {
+          ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+      }
+      .navigationTitle("Profile")
+      .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+    }
+    .frame(minWidth: 360, idealWidth: 480, minHeight: 400)
+    .task(id: userID) { profile = await model.profile(id: userID) }
   }
 }
 

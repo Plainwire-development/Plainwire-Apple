@@ -1,5 +1,6 @@
 import SwiftUI
 import UserNotifications
+import UniformTypeIdentifiers
 
 #if os(iOS)
   import UIKit
@@ -15,6 +16,12 @@ struct SettingsView: View {
   @AppStorage(AppPreferenceKeys.reduceInterfaceMotion) private var reduceInterfaceMotion = false
   @AppStorage(AppPreferenceKeys.compactMessages) private var compactMessages = false
   @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
+  @State private var activeSheet: SettingsSheet?
+
+  private enum SettingsSheet: String, Identifiable {
+    case profile, account
+    var id: String { rawValue }
+  }
 
   var showNavigationTitle = true
   var detailPresentation = false
@@ -40,12 +47,21 @@ struct SettingsView: View {
     .onChange(of: scenePhase) { _, phase in
       if phase == .active { Task { await refreshNotificationStatus() } }
     }
+    .sheet(item: $activeSheet) { sheet in
+      switch sheet {
+      case .profile:
+        if let user = model.session?.user { ProfileEditorSheet(user: user) }
+      case .account:
+        AccountSecuritySheet()
+      }
+    }
   }
 
   @ViewBuilder private var responsiveSettings: some View {
     ViewThatFits(in: .horizontal) {
       HStack(alignment: .top, spacing: 18) {
         VStack(spacing: 18) {
+          profileCard
           chatCard
           notificationsCard
         }
@@ -60,12 +76,22 @@ struct SettingsView: View {
       }
 
       VStack(spacing: 18) {
+        profileCard
         chatCard
         notificationsCard
         connectionCard
         aboutCard
         accountCard
       }
+    }
+  }
+
+  private var profileCard: some View {
+    SettingsCard(title: "Profile", symbol: "person.crop.circle", subtitle: "Your public identity on Plainwire.") {
+      SettingsActionRow(
+        title: "Edit profile", detail: "Name, bio, status, avatar, and banner.",
+        symbol: "person.crop.circle.badge.checkmark", actionTitle: "Edit"
+      ) { activeSheet = .profile }
     }
   }
 
@@ -167,9 +193,14 @@ struct SettingsView: View {
 
   private var accountCard: some View {
     SettingsCard(
-      title: "Account", symbol: "person.crop.circle",
-      subtitle: "Signing out removes the active Plainwire session from this app."
+      title: "Account", symbol: "lock.shield",
+      subtitle: "Manage your identity and signed-in sessions."
     ) {
+      SettingsActionRow(
+        title: "Security and sessions", detail: "Username, email, password, and active sessions.",
+        symbol: "key.horizontal", actionTitle: "Manage"
+      ) { activeSheet = .account }
+      SettingsDivider()
       Button(role: .destructive) {
         Task { await model.logout() }
       } label: {
@@ -385,5 +416,273 @@ private struct OptionalNavigationTitle: ViewModifier {
 
   @ViewBuilder func body(content: Content) -> some View {
     if enabled { content.navigationTitle(title) } else { content }
+  }
+}
+
+private struct ProfileEditorSheet: View {
+  @Environment(AppModel.self) private var model
+  @Environment(\.dismiss) private var dismiss
+  @State private var displayName: String
+  @State private var bio: String
+  @State private var status: String
+  @State private var avatarURL: String
+  @State private var bannerURL: String
+  @State private var theme: String
+  @State private var pickingImage = false
+  @State private var imageField: String = "avatar"
+  @State private var saving = false
+
+  init(user: PWUser) {
+    _displayName = State(initialValue: user.displayName)
+    _bio = State(initialValue: user.bio)
+    _status = State(initialValue: user.status)
+    _avatarURL = State(initialValue: user.avatarURL)
+    _bannerURL = State(initialValue: user.bannerURL)
+    _theme = State(initialValue: user.theme)
+  }
+
+  var body: some View {
+    NavigationStack {
+      Form {
+        Section("Identity") {
+          TextField("Display name", text: $displayName)
+            .textContentType(.name)
+          TextField("Status", text: $status)
+          TextField("Bio", text: $bio, axis: .vertical).lineLimit(3...7)
+        }
+        Section("Images") {
+          HStack {
+            RemoteAvatar(url: model.mediaURL(avatarURL), fallback: String(displayName.prefix(1)), size: 56)
+            Spacer()
+            Button("Choose avatar") { imageField = "avatar"; pickingImage = true }
+          }
+          if let url = model.mediaURL(bannerURL) {
+            AsyncImage(url: url) { image in
+              image.resizable().scaledToFill()
+            } placeholder: { Color.secondary.opacity(0.12) }
+            .frame(height: 110).clipped().cornerRadius(12)
+          }
+          Button("Choose banner") { imageField = "banner"; pickingImage = true }
+          Button("Remove avatar", role: .destructive) { avatarURL = "" }
+          Button("Remove banner", role: .destructive) { bannerURL = "" }
+        }
+        Section("Appearance") {
+          Picker("Theme", selection: $theme) {
+            Text("System").tag("system")
+            Text("Light").tag("light")
+            Text("Dark").tag("dark")
+          }
+        }
+      }
+      .navigationTitle("Edit Profile")
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+        ToolbarItem(placement: .confirmationAction) {
+          Button("Save") { Task { await save() } }
+            .disabled(saving || displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+      }
+    }
+    .frame(minWidth: 400, idealWidth: 520, minHeight: 480)
+    .fileImporter(isPresented: $pickingImage, allowedContentTypes: [.image]) { result in
+      guard case .success(let url) = result else { return }
+      let field = imageField
+      Task {
+        if let upload = await model.upload(url) {
+          if field == "avatar" { avatarURL = upload.url } else { bannerURL = upload.url }
+        }
+      }
+    }
+  }
+
+  private func save() async {
+    saving = true
+    defer { saving = false }
+    if await model.saveProfile(
+      displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines),
+      bio: bio, status: status, avatarURL: avatarURL, bannerURL: bannerURL, theme: theme
+    ) { dismiss() }
+  }
+}
+
+private struct AccountSecuritySheet: View {
+  @Environment(AppModel.self) private var model
+  @Environment(\.dismiss) private var dismiss
+  @State private var username = ""
+  @State private var usernamePassword = ""
+  @State private var email = ""
+  @State private var emailPassword = ""
+  @State private var currentPassword = ""
+  @State private var newPassword = ""
+  @State private var confirmPassword = ""
+  @State private var sessions: [PWAccountSession] = []
+  @State private var busy = false
+  @State private var notice = ""
+  @State private var confirmLogoutOthers = false
+  @State private var accountPassword = ""
+  @State private var accountConfirmation = ""
+  @State private var accountAction: AccountAction = .disable
+  @State private var showingAccountConfirmation = false
+
+  private enum AccountAction: String {
+    case disable, delete
+  }
+
+  var body: some View {
+    NavigationStack {
+      Form {
+        if !notice.isEmpty {
+          Section { Label(notice, systemImage: "checkmark.circle.fill").foregroundStyle(.green) }
+        }
+        Section("Username") {
+          TextField("Username", text: $username)
+            .autocorrectionDisabled()
+          SecureField("Current password", text: $usernamePassword)
+          Button("Change username") { Task { await changeUsername() } }
+            .disabled(busy || username.isEmpty || usernamePassword.isEmpty)
+        }
+        Section("Email and recovery") {
+          TextField("Email", text: $email)
+            .textContentType(.emailAddress)
+            .autocorrectionDisabled()
+          if let user = model.session?.user, user.email?.isEmpty == false {
+            Label(user.emailVerified == true ? "Verified" : "Verification pending",
+                  systemImage: user.emailVerified == true ? "checkmark.seal.fill" : "envelope.badge")
+              .foregroundStyle(.secondary)
+          }
+          SecureField("Current password", text: $emailPassword)
+          Button("Save email") { Task { await saveEmail() } }
+            .disabled(busy || email.isEmpty || emailPassword.isEmpty)
+          if model.session?.user.email?.isEmpty == false {
+            Button("Resend verification") { Task { await resendEmail() } }
+              .disabled(busy)
+            Button("Remove email", role: .destructive) { Task { await removeEmail() } }
+              .disabled(busy || emailPassword.isEmpty)
+          }
+        }
+        Section("Password") {
+          SecureField("Current password", text: $currentPassword)
+          SecureField("New password", text: $newPassword)
+          SecureField("Confirm new password", text: $confirmPassword)
+          Button("Change password") { Task { await changePassword() } }
+            .disabled(busy || currentPassword.isEmpty || newPassword.count < 10)
+        }
+        Section("Active sessions") {
+          ForEach(sessions) { session in
+            VStack(alignment: .leading, spacing: 3) {
+              Text(session.current ? "This device" : "Signed-in session")
+                .fontWeight(session.current ? .semibold : .regular)
+              Text("Last active \(Date(timeIntervalSince1970: TimeInterval(session.lastSeen) / 1000).formatted())")
+                .font(.caption).foregroundStyle(.secondary)
+            }
+          }
+          Button("Sign out other sessions", role: .destructive) { confirmLogoutOthers = true }
+            .disabled(busy || !sessions.contains(where: { !$0.current }))
+        }
+        Section("Account access") {
+          Text("Disabling signs out all devices. You can reactivate by signing in. Deleting permanently removes your account and eligible account owned data.")
+            .font(.caption).foregroundStyle(.secondary)
+          SecureField("Current password", text: $accountPassword)
+          TextField("Type DISABLE or DELETE", text: $accountConfirmation)
+            .autocorrectionDisabled()
+          Button("Disable account", role: .destructive) {
+            accountAction = .disable
+            showingAccountConfirmation = true
+          }
+            .disabled(busy || accountPassword.isEmpty || accountConfirmation != "DISABLE")
+          Button("Delete account permanently", role: .destructive) {
+            accountAction = .delete
+            showingAccountConfirmation = true
+          }
+            .disabled(busy || accountPassword.isEmpty || accountConfirmation != "DELETE")
+        }
+      }
+      .navigationTitle("Account")
+      .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+    }
+    .frame(minWidth: 400, idealWidth: 520, minHeight: 530)
+    .task {
+      username = model.session?.user.username ?? ""
+      email = model.session?.user.email ?? ""
+      sessions = await model.accountSessions()
+    }
+    .confirmationDialog("Sign out other sessions?", isPresented: $confirmLogoutOthers) {
+      Button("Sign out other sessions", role: .destructive) {
+        Task {
+          busy = true
+          if await model.logoutOtherSessions() {
+            sessions = await model.accountSessions()
+            notice = "Other sessions signed out."
+          }
+          busy = false
+        }
+      }
+    }
+    .confirmationDialog(
+      accountAction == .delete ? "Delete account permanently?" : "Disable account?",
+      isPresented: $showingAccountConfirmation
+    ) {
+      Button(accountAction == .delete ? "Delete permanently" : "Disable account", role: .destructive) {
+        Task {
+          busy = true
+          if await model.closeAccount(password: accountPassword, permanently: accountAction == .delete) {
+            dismiss()
+          }
+          busy = false
+        }
+      }
+    } message: {
+      Text(accountAction == .delete ? "This cannot be undone." : "You can sign in again to reactivate your account.")
+    }
+  }
+
+  private func changeUsername() async {
+    busy = true
+    if await model.changeUsername(current: usernamePassword, new: username) {
+      usernamePassword = ""
+      notice = "Username updated."
+    }
+    busy = false
+  }
+
+  private func saveEmail() async {
+    busy = true
+    if let message = await model.updateEmail(email, password: emailPassword) {
+      emailPassword = ""
+      notice = message
+    }
+    busy = false
+  }
+
+  private func removeEmail() async {
+    busy = true
+    if await model.removeEmail(password: emailPassword) {
+      email = ""
+      emailPassword = ""
+      notice = "Email removed."
+    }
+    busy = false
+  }
+
+  private func resendEmail() async {
+    busy = true
+    if let message = await model.resendEmailVerification() { notice = message }
+    busy = false
+  }
+
+  private func changePassword() async {
+    guard newPassword == confirmPassword else {
+      model.errorMessage = "The new passwords do not match."
+      return
+    }
+    busy = true
+    if await model.changePassword(current: currentPassword, new: newPassword) {
+      currentPassword = ""
+      newPassword = ""
+      confirmPassword = ""
+      sessions = await model.accountSessions()
+      notice = "Password changed. Other sessions were signed out."
+    }
+    busy = false
   }
 }

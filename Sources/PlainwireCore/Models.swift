@@ -13,6 +13,8 @@ public struct PWUser: Codable, Hashable, Identifiable, Sendable {
   public var theme: String
   public var createdAt: Int64
   public var lastSeen: Int64
+  public var email: String?
+  public var emailVerified: Bool?
 
   enum CodingKeys: String, CodingKey {
     case id, username, bio, status, theme
@@ -21,6 +23,8 @@ public struct PWUser: Codable, Hashable, Identifiable, Sendable {
     case bannerURL = "banner_url"
     case createdAt = "created_at"
     case lastSeen = "last_seen"
+    case email
+    case emailVerified = "email_verified"
   }
 }
 
@@ -31,6 +35,43 @@ public struct PWSession: Codable, Hashable, Sendable {
   enum CodingKeys: String, CodingKey {
     case user, csrf
     case serverTime = "server_time"
+  }
+}
+
+public struct PWProfile: Codable, Hashable, Sendable {
+  public let user: PWUser
+  public let relationship: JSONValue?
+}
+
+public struct PWAccountSession: Codable, Hashable, Identifiable, Sendable {
+  public let id: PlainwireID
+  public let current: Bool
+  public let createdAt: Int64
+  public let lastSeen: Int64
+  public let expiresAt: Int64
+  enum CodingKeys: String, CodingKey {
+    case id, current
+    case createdAt = "created_at"
+    case lastSeen = "last_seen"
+    case expiresAt = "expires_at"
+  }
+}
+
+public struct PWInvite: Codable, Hashable, Identifiable, Sendable {
+  public let code: String
+  public let channelId: PlainwireID?
+  public let maxUses: Int?
+  public let uses: Int?
+  public let createdAt: Int64?
+  public let expiresAt: Int64?
+  public let revoked: Bool?
+  public var id: String { code }
+  enum CodingKeys: String, CodingKey {
+    case code, uses, revoked
+    case channelId = "channel_id"
+    case maxUses = "max_uses"
+    case createdAt = "created_at"
+    case expiresAt = "expires_at"
   }
 }
 

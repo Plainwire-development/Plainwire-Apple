@@ -98,3 +98,20 @@ import Testing
   #expect(event.reactionAdded == true)
   #expect(event.userID == 7)
 }
+
+@Test func accountAndInvitePayloadsDecodeFromBackend() throws {
+  let sessions = #"[{"id":31,"current":true,"created_at":1000,"last_seen":2000,"expires_at":3000}]"#
+  let decodedSessions = try JSONDecoder().decode([PWAccountSession].self, from: Data(sessions.utf8))
+  #expect(decodedSessions.first?.current == true)
+  #expect(decodedSessions.first?.lastSeen == 2000)
+
+  let invite = #"{"code":"abc-123","expires_at":3000,"max_uses":0}"#
+  let decodedInvite = try JSONDecoder().decode(PWInvite.self, from: Data(invite.utf8))
+  #expect(decodedInvite.code == "abc-123")
+  #expect(decodedInvite.channelId == nil)
+
+  let profile = #"{"user":{"id":7,"username":"robert","display_name":"Robert","bio":"Hello","avatar_url":"","banner_url":"","status":"online","theme":"system","created_at":1000,"last_seen":2000},"relationship":{"status":"none"}}"#
+  let decodedProfile = try JSONDecoder().decode(PWProfile.self, from: Data(profile.utf8))
+  #expect(decodedProfile.user.email == nil)
+  #expect(decodedProfile.user.displayName == "Robert")
+}

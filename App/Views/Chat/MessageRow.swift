@@ -4,6 +4,7 @@ import AVKit
 struct MessageRow: View {
   @Environment(AppModel.self) private var model
   @AppStorage(AppPreferenceKeys.compactMessages) private var compactMessages = false
+  @State private var showingProfile = false
   let presentation: AppModel.MessagePresentation
 
   private var message: PWMessage { presentation.message }
@@ -77,13 +78,16 @@ struct MessageRow: View {
       .contentShape(Rectangle())
       .modifier(MessageHoverSurfaceModifier())
     }
+    .sheet(isPresented: $showingProfile) { PersonProfileSheet(userID: message.userId) }
   }
 
   private var messageHeader: some View {
     HStack(alignment: .firstTextBaseline, spacing: 7) {
-      Text(message.displayName)
+      Button(message.displayName) { showingProfile = true }
+        .buttonStyle(.plain)
         .font(compactMessages ? .caption.weight(.semibold) : .subheadline.weight(.semibold))
         .lineLimit(1)
+        .accessibilityHint("View profile")
       Text(presentation.timestampText)
         .font(.caption2)
         .foregroundStyle(.tertiary)

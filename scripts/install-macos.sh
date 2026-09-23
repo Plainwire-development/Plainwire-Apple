@@ -100,10 +100,12 @@ elif [[ $mode != app ]]; then
     -o "$download_dir/$archive_name" "$release_url/$archive_name"
   curl -fsSL --retry 3 --connect-timeout 15 \
     -o "$download_dir/SHA256SUMS.txt" "$release_url/SHA256SUMS.txt"
-  (
-    cd "$download_dir"
-    shasum -a 256 -c SHA256SUMS.txt
-  )
+  expected=$(awk -v name="$archive_name" '$2 == name { print $1 }' "$download_dir/SHA256SUMS.txt")
+  actual=$(shasum -a 256 "$download_dir/$archive_name" | awk '{ print $1 }')
+  if [[ ! $expected =~ ^[0-9a-fA-F]{64}$ || $actual != "$expected" ]]; then
+    echo "Plainwire download failed its SHA-256 check." >&2
+    exit 1
+  fi
   mkdir "$download_dir/unpacked"
   ditto -x -k "$download_dir/$archive_name" "$download_dir/unpacked"
   source_app=$download_dir/unpacked/Plainwire.app

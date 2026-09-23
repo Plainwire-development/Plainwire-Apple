@@ -15,6 +15,7 @@ output_dir=$2
 root=$(cd "$(dirname "$0")/.." && pwd)
 build_dir=${TMPDIR:-/tmp}/plainwire-release-build
 archive_name=Plainwire-macOS-universal.zip
+swap_name=plainwire-swap
 
 mkdir -p "$output_dir"
 output_dir=$(cd "$output_dir" && pwd)
@@ -50,9 +51,14 @@ codesign --verify --strict "$stage/Plainwire.app"
 
 ditto -c -k --norsrc --keepParent "$stage/Plainwire.app" "$output_dir/$archive_name"
 cp "$root/scripts/install-macos.sh" "$output_dir/install-macos.sh"
+cp "$root/scripts/update-macos.sh" "$output_dir/update-macos.sh"
+clang -arch arm64 -arch x86_64 -O2 -Wall -Wextra -Werror \
+  "$root/scripts/plainwire-swap.c" -o "$output_dir/$swap_name"
+codesign --force --sign - "$output_dir/$swap_name"
+codesign --verify --strict "$output_dir/$swap_name"
 (
   cd "$output_dir"
-  shasum -a 256 "$archive_name" > SHA256SUMS.txt
+  shasum -a 256 "$archive_name" "$swap_name" > SHA256SUMS.txt
 )
 
 echo "Created $output_dir/$archive_name"

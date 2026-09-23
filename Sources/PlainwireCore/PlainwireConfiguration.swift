@@ -1,7 +1,7 @@
 import Foundation
 
 public enum PlainwireClientInfo {
-  public static let version = "1.1.0"
+  public static let version = "1.2.0"
   public static let userAgent = "Plainwire-Apple/\(version)"
 }
 

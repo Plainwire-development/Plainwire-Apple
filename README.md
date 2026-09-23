@@ -26,15 +26,25 @@ The installer removes the `com.apple.quarantine` attribute from the **installed 
 
 The [releases page](https://github.com/Plainwire-development/Plainwire-Apple/releases) also has the Mac ZIP and its checksum if you prefer a manual download.
 
+## Update on Mac
+
+To update an installed copy to the latest release, run:
+
+```sh
+curl -fsSL https://github.com/Plainwire-development/Plainwire-Apple/releases/latest/download/update-macos.sh | bash
+```
+
+The updater skips versions already installed, verifies the archive and swap helper against the release SHA-256 list, checks the app signature and version, then swaps the staged app with the installed one in a single filesystem operation. If verification or the swap fails, the installed app stays in place. It closes and reopens Plainwire when needed. Add `--no-open` with `bash -s -- --no-open` to leave it closed, or run `./scripts/update-macos.sh --release 1.2.0` from this checkout to select a release.
+
 ## Run on iPhone or iPad
 
 Open `Plainwire.xcodeproj` in Xcode, select the `Plainwire` scheme, choose a simulator or device, and press Run. The app requires iOS or iPadOS 18 or later. A physical device needs your own Apple signing team in Xcode.
 
 ## What it does
 
-Plainwire supports direct messages, channels, friends, reactions, replies, file uploads, spoiler attachments, inline video, and live presence. Images are cached and resized for the screen. On Mac and iPad, conversations use a wider split view; iPhone uses tabs.
+Plainwire supports direct messages, channels, friends, reactions, replies, file uploads, spoiler attachments, inline video, and live presence. You can view other members' profiles, edit your own profile and images, manage account credentials and sessions, and create, join, and customize servers. Server controls include appearance, your server profile, channels, categories, members, and invite links. Images are cached and resized for the screen. On Mac and iPad, conversations use a wider split view; iPhone uses tabs.
 
-Notifications work while the app is running. Background push on iPhone and voice calls still need server and media work.
+The Workspace tab opens the complete Plainwire web client inside the app with your active session. It provides advanced features that do not yet have native screens, including developer tools and the web calling interface. Microphone and camera access are requested when those web features need them; live media also depends on WebKit and device permissions. Native call controls are not implemented. Notifications work while the app is running; background push on iPhone still needs APNs delivery.
 
 ## Development
 

@@ -66,9 +66,15 @@ public actor PlainwireAPIClient {
   }
 
   public func logout() async throws {
+    defer {
+      csrfToken = nil
+      let cookies = HTTPCookieStorage.shared.cookies(for: configuration.baseURL) ?? []
+      for cookie in cookies where cookie.name == "pw_session" {
+        HTTPCookieStorage.shared.deleteCookie(cookie)
+      }
+    }
     let _: EmptyPayload? = try await requestAllowingEmpty(
       method: "POST", path: "logout", body: Optional<EmptyPayload>.none, requiresCSRF: true)
-    csrfToken = nil
   }
 
   public func sync(since: Int64? = nil) async throws -> PWSyncSnapshot {
@@ -92,6 +98,104 @@ public actor PlainwireAPIClient {
   }
   public func server(id: PlainwireID) async throws -> PWServerDetail {
     try await get("server/\(id)")
+  }
+  public func profile(id: PlainwireID) async throws -> PWProfile {
+    try await get("profile/\(id)")
+  }
+  public func updateProfile(
+    displayName: String, bio: String, status: String, avatarURL: String,
+    bannerURL: String, theme: String
+  ) async throws {
+    let _: JSONValue = try await request(method: "POST", path: "profile", body: [
+      "display_name": displayName, "bio": bio, "status": status,
+      "avatar_url": avatarURL, "banner_url": bannerURL, "theme": theme,
+    ])
+  }
+  public func accountSessions() async throws -> [PWAccountSession] { try await get("sessions") }
+  public func logoutOtherSessions() async throws -> JSONValue {
+    try await request(method: "POST", path: "sessions/logout-others", body: [String: String]())
+  }
+  public func changePassword(current: String, new: String) async throws {
+    let _: JSONValue = try await request(method: "POST", path: "password", body: [
+      "current_password": current, "new_password": new,
+    ])
+  }
+  public func changeUsername(current: String, new: String, expected: String) async throws {
+    let _: JSONValue = try await request(method: "POST", path: "username", body: [
+      "current_password": current, "username": new, "expected_username": expected,
+    ])
+  }
+  public func updateEmail(_ email: String, password: String) async throws -> JSONValue {
+    try await request(method: "POST", path: "email", body: ["email": email, "password": password])
+  }
+  public func removeEmail(password: String) async throws {
+    let _: JSONValue = try await request(method: "POST", path: "email/remove", body: ["password": password])
+  }
+  public func resendEmailVerification() async throws -> JSONValue {
+    try await request(method: "POST", path: "email/resend", body: [String: String]())
+  }
+  public func disableAccount(password: String) async throws {
+    let _: JSONValue = try await request(
+      method: "POST", path: "account/disable", body: ["password": password])
+  }
+  public func deleteAccount(password: String) async throws {
+    let _: JSONValue = try await request(
+      method: "POST", path: "account/delete", body: ["password": password])
+  }
+  public func createServer(name: String, description: String) async throws -> JSONValue {
+    try await request(method: "POST", path: "servers", body: ["name": name, "description": description])
+  }
+  public func updateServer(id: PlainwireID, fields: [String: String]) async throws {
+    let _: JSONValue = try await request(method: "POST", path: "server/\(id)", body: fields)
+  }
+  public func createCategory(serverID: PlainwireID, name: String) async throws {
+    let _: JSONValue = try await request(
+      method: "POST", path: "server/\(serverID)/categories", body: ["name": name])
+  }
+  public func createChannel(
+    serverID: PlainwireID, name: String, kind: String, categoryID: PlainwireID?
+  ) async throws {
+    let body: [String: JSONValue] = [
+      "name": .string(name), "kind": .string(kind),
+      "category_id": categoryID.map(JSONValue.int) ?? .null,
+    ]
+    let _: JSONValue = try await request(method: "POST", path: "server/\(serverID)/channels", body: body)
+  }
+  public func updateChannel(id: PlainwireID, name: String, topic: String) async throws {
+    let _: JSONValue = try await request(method: "POST", path: "channel/\(id)/settings", body: [
+      "name": name, "topic": topic,
+    ])
+  }
+  public func invites(serverID: PlainwireID) async throws -> [PWInvite] {
+    try await get("server/\(serverID)/wires")
+  }
+  public func createInvite(serverID: PlainwireID, channelID: PlainwireID?) async throws -> PWInvite {
+    let body: [String: JSONValue] = [
+      "channel_id": channelID.map(JSONValue.int) ?? .null,
+      "max_uses": .int(0), "expires_in": .int(86400),
+    ]
+    return try await request(method: "POST", path: "server/\(serverID)/wires", body: body)
+  }
+  public func revokeInvite(serverID: PlainwireID, code: String) async throws {
+    let safeCode = Self.encodedPathSegment(code)
+    let _: JSONValue = try await request(
+      method: "DELETE", path: "server/\(serverID)/wires/\(safeCode)", body: Optional<JSONValue>.none)
+  }
+  public func invitePreview(code: String) async throws -> JSONValue {
+    try await get("wires/\(Self.encodedPathSegment(code))")
+  }
+  public func joinInvite(code: String) async throws -> JSONValue {
+    try await request(
+      method: "POST", path: "wires/\(Self.encodedPathSegment(code))/join",
+      body: [String: String]())
+  }
+  public func updateMemberProfile(
+    serverID: PlainwireID, userID: PlainwireID, nickname: String, bio: String,
+    avatarURL: String
+  ) async throws {
+    let _: JSONValue = try await request(
+      method: "POST", path: "server/\(serverID)/member/\(userID)/profile",
+      body: ["nickname": nickname, "bio": bio, "avatar_url": avatarURL])
   }
   public func rtcConfiguration() async throws -> PWRTCConfiguration { try await get("rtc-config") }
 
@@ -198,6 +302,12 @@ public actor PlainwireAPIClient {
     var allowed = CharacterSet.alphanumerics
     allowed.insert(charactersIn: "-._~")
     return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? "file"
+  }
+
+  private static func encodedPathSegment(_ value: String) -> String {
+    var allowed = CharacterSet.alphanumerics
+    allowed.insert(charactersIn: "-_~")
+    return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
   }
 
   private func get<T: Decodable & Sendable>(_ path: String, query: [URLQueryItem] = []) async throws

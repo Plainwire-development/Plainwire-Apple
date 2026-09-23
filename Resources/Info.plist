@@ -17,6 +17,8 @@
     <key>LSMinimumSystemVersion</key><string>$(MACOSX_DEPLOYMENT_TARGET)</string>
     <key>NSHumanReadableCopyright</key><string>Plainwire</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSMicrophoneUsageDescription</key><string>Plainwire uses your microphone when you join a voice or video call.</string>
+    <key>NSCameraUsageDescription</key><string>Plainwire uses your camera when you choose to share video in a call.</string>
     <key>UIApplicationSupportsIndirectInputEvents</key><true/>
     <key>UILaunchScreen</key><dict/>
     <key>UISupportedInterfaceOrientations</key>
