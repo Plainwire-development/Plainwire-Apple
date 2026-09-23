@@ -87,10 +87,10 @@ if [[ $mode == source || ( $mode == auto && -n $root ) ]]; then
 elif [[ $mode != app ]]; then
   if [[ $release_tag == latest ]]; then
     release_url=https://github.com/$repository/releases/latest/download
-  elif [[ $release_tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  elif [[ $release_tag =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     release_url=https://github.com/$repository/releases/download/$release_tag
   else
-    echo "Release tags must look like v1.2.3." >&2
+    echo "Release tags must look like 1.2.3 or v1.2.3." >&2
     exit 2
   fi
 

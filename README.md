@@ -40,6 +40,6 @@ Notifications work while the app is running. Background push on iPhone and voice
 
 Run `./scripts/verify.sh` for core tests and project checks. The SwiftUI app also needs an Xcode build; both Mac and iOS Simulator builds run in CI.
 
-To publish a release, update the app version in Xcode and push a matching tag such as `v1.2.0`, or publish a release for that tag on GitHub. The release workflow builds a universal Mac app, checks both architectures, and uploads the ZIP, checksum, and installer.
+To publish a release, update the app version in Xcode and push a matching tag such as `1.2.0` or `v1.2.0`. Creating a tag on GitHub works too. The release workflow builds a universal Mac app, checks both architectures, and uploads the ZIP, checksum, and installer. It also checks the newest version tag when the workflow itself changes, so an earlier tag can be picked up.
 
 The app code is in `App/`, the API and realtime client are in `Sources/PlainwireCore/`, and core tests are in `Tests/PlainwireCoreTests/`. See [ARCHITECTURE.md](ARCHITECTURE.md) for the data flow and [QA.md](QA.md) for manual checks.

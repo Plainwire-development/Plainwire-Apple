@@ -27,7 +27,7 @@ xcodebuild -quiet \
 
 app=$build_dir/Build/Products/Release/Plainwire.app
 version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")
-if [[ $tag != "v$version" ]]; then
+if [[ ${tag#v} != "$version" ]]; then
   echo "Tag $tag does not match app version $version." >&2
   exit 1
 fi
