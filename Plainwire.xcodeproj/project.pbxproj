@@ -1,0 +1,223 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+		09A2EAA596DF3828915E572F /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF700CF15D39946FA2E8625B /* AppModel.swift */; };
+		9ED0CF2CCBEAADFA3616EEC9 /* PlainwireApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DED249AE82B0055C40F0B65 /* PlainwireApp.swift */; };
+		9D789A55C8CE2CF2F5370816 /* NotificationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D10B1C1EB0418BCF485CBBB /* NotificationCoordinator.swift */; };
+		9E9DF57D43EE6BF6004D7AC0 /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7D63A3770FF82BD12E2C9B1 /* SignInView.swift */; };
+		0345D5E860A60D59518B097B /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5A01871BC5EB0DE33309E76 /* ChatView.swift */; };
+		4081E433C07F79C2B66E8203 /* ComposerBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43B4DBB822B30E737CE5CA95 /* ComposerBar.swift */; };
+		168ED9C5F8523F6A442DEFF4 /* ConversationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB49D84259D914539E712BF8 /* ConversationListView.swift */; };
+		334F54C67AFFAC3F522F5164 /* MessageRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D961B7E0B8EE1BB8FB7681FE /* MessageRow.swift */; };
+		F13FBDC768EEA3D200996CCD /* FriendsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E401933FA0812FE98B3D3E80 /* FriendsView.swift */; };
+		136A83AE043583640C52BE00 /* AppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 871691B125B47B3BCF268CAA /* AppRootView.swift */; };
+		9DBD49F5C9B4ADE9111587A7 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9E744E78ADAB2505FBDAD34 /* SidebarView.swift */; };
+		5E075CFD2CFB6A76EDC7960D /* ServerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3184BD3384792E7D97FC3B94 /* ServerViews.swift */; };
+		E62AEB0C7DEA9CCA83D8D4AE /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A88F5D5826D96AE89F46178F /* SettingsView.swift */; };
+		F010CF3B43AB3C112BC9D24F /* Visuals.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ACE14CAD54AB8415A4DE5AD /* Visuals.swift */; };
+		6F970CF0C341995A34B89460 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AA47A85A0774302765036ED /* APIClient.swift */; };
+		E0CE510C38C94E12A796246D /* APIError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3504E65508A0D44AB339F8 /* APIError.swift */; };
+		77271A89F132D45BE5016D39 /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CFE25F81A35E364E86E72E2 /* JSONValue.swift */; };
+		109D6D6B2CAEDFE404434B7D /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D863D093F042DF7FEED1EFF /* Models.swift */; };
+		C9B6E70D9AF66CCF871F5DE5 /* PlainwireConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C01E4B69B3F3DD7E295422B /* PlainwireConfiguration.swift */; };
+		9A45D7515452CB64A60F86A8 /* PlatformImports.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7650C688922D8B390B54D72B /* PlatformImports.swift */; };
+		3DB9592CA63E58D2BF8DD6F4 /* Realtime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 624886F9855EB70028E90E8F /* Realtime.swift */; };
+		627BBC9C62B0C159B656E415 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9CCD11486CB5CFFBAC839C56 /* Assets.xcassets */; };
+		A1B2C3D4E5F6012345678901 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6012345678902 /* PrivacyInfo.xcprivacy */; };
+		AF700CF15D39946FA2E8625B /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Model/AppModel.swift"; sourceTree = SOURCE_ROOT; };
+		8DED249AE82B0055C40F0B65 /* PlainwireApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/PlainwireApp.swift"; sourceTree = SOURCE_ROOT; };
+		6D10B1C1EB0418BCF485CBBB /* NotificationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Platform/NotificationCoordinator.swift"; sourceTree = SOURCE_ROOT; };
+		F7D63A3770FF82BD12E2C9B1 /* SignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Auth/SignInView.swift"; sourceTree = SOURCE_ROOT; };
+		A5A01871BC5EB0DE33309E76 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Chat/ChatView.swift"; sourceTree = SOURCE_ROOT; };
+		43B4DBB822B30E737CE5CA95 /* ComposerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Chat/ComposerBar.swift"; sourceTree = SOURCE_ROOT; };
+		CB49D84259D914539E712BF8 /* ConversationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Chat/ConversationListView.swift"; sourceTree = SOURCE_ROOT; };
+		D961B7E0B8EE1BB8FB7681FE /* MessageRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Chat/MessageRow.swift"; sourceTree = SOURCE_ROOT; };
+		E401933FA0812FE98B3D3E80 /* FriendsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Friends/FriendsView.swift"; sourceTree = SOURCE_ROOT; };
+		871691B125B47B3BCF268CAA /* AppRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Home/AppRootView.swift"; sourceTree = SOURCE_ROOT; };
+		C9E744E78ADAB2505FBDAD34 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Home/SidebarView.swift"; sourceTree = SOURCE_ROOT; };
+		3184BD3384792E7D97FC3B94 /* ServerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Servers/ServerViews.swift"; sourceTree = SOURCE_ROOT; };
+		A88F5D5826D96AE89F46178F /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Settings/SettingsView.swift"; sourceTree = SOURCE_ROOT; };
+		4ACE14CAD54AB8415A4DE5AD /* Visuals.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Shared/Visuals.swift"; sourceTree = SOURCE_ROOT; };
+		6AA47A85A0774302765036ED /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/PlainwireCore/APIClient.swift"; sourceTree = SOURCE_ROOT; };
+		6D3504E65508A0D44AB339F8 /* APIError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/PlainwireCore/APIError.swift"; sourceTree = SOURCE_ROOT; };
+		4CFE25F81A35E364E86E72E2 /* JSONValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/PlainwireCore/JSONValue.swift"; sourceTree = SOURCE_ROOT; };
+		5D863D093F042DF7FEED1EFF /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/PlainwireCore/Models.swift"; sourceTree = SOURCE_ROOT; };
+		7C01E4B69B3F3DD7E295422B /* PlainwireConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/PlainwireCore/PlainwireConfiguration.swift"; sourceTree = SOURCE_ROOT; };
+		7650C688922D8B390B54D72B /* PlatformImports.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/PlainwireCore/PlatformImports.swift"; sourceTree = SOURCE_ROOT; };
+		624886F9855EB70028E90E8F /* Realtime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/PlainwireCore/Realtime.swift"; sourceTree = SOURCE_ROOT; };
+		9CCD11486CB5CFFBAC839C56 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Resources/Assets.xcassets"; sourceTree = SOURCE_ROOT; };
+		F2A202B54F237E9B2ECC0ACF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Resources/Info.plist"; sourceTree = SOURCE_ROOT; };
+		6F0F39BF4E38A28B6840C428 /* Plainwire-macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Resources/Plainwire-macOS.entitlements"; sourceTree = SOURCE_ROOT; };
+		A1B2C3D4E5F6012345678902 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = "Resources/PrivacyInfo.xcprivacy"; sourceTree = SOURCE_ROOT; };
+		AEF63687048485D45524643C /* Plainwire.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Plainwire.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7B8633C7EB6F5CB13673C25D /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		E4F78730D65EE9F55E2BAC2F /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
+			09A2EAA596DF3828915E572F /* AppModel.swift in Sources */,
+			9ED0CF2CCBEAADFA3616EEC9 /* PlainwireApp.swift in Sources */,
+			9D789A55C8CE2CF2F5370816 /* NotificationCoordinator.swift in Sources */,
+			9E9DF57D43EE6BF6004D7AC0 /* SignInView.swift in Sources */,
+			0345D5E860A60D59518B097B /* ChatView.swift in Sources */,
+			4081E433C07F79C2B66E8203 /* ComposerBar.swift in Sources */,
+			168ED9C5F8523F6A442DEFF4 /* ConversationListView.swift in Sources */,
+			334F54C67AFFAC3F522F5164 /* MessageRow.swift in Sources */,
+			F13FBDC768EEA3D200996CCD /* FriendsView.swift in Sources */,
+			136A83AE043583640C52BE00 /* AppRootView.swift in Sources */,
+			9DBD49F5C9B4ADE9111587A7 /* SidebarView.swift in Sources */,
+			5E075CFD2CFB6A76EDC7960D /* ServerViews.swift in Sources */,
+			E62AEB0C7DEA9CCA83D8D4AE /* SettingsView.swift in Sources */,
+			F010CF3B43AB3C112BC9D24F /* Visuals.swift in Sources */,
+			6F970CF0C341995A34B89460 /* APIClient.swift in Sources */,
+			E0CE510C38C94E12A796246D /* APIError.swift in Sources */,
+			77271A89F132D45BE5016D39 /* JSONValue.swift in Sources */,
+			109D6D6B2CAEDFE404434B7D /* Models.swift in Sources */,
+			C9B6E70D9AF66CCF871F5DE5 /* PlainwireConfiguration.swift in Sources */,
+			9A45D7515452CB64A60F86A8 /* PlatformImports.swift in Sources */,
+			3DB9592CA63E58D2BF8DD6F4 /* Realtime.swift in Sources */,
+		); runOnlyForDeploymentPostprocessing = 0; };
+		C52ABA055DA4D0050382EB56 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (
+			627BBC9C62B0C159B656E415 /* Assets.xcassets in Resources */,
+			A1B2C3D4E5F6012345678901 /* PrivacyInfo.xcprivacy in Resources */,
+		); runOnlyForDeploymentPostprocessing = 0; };
+		6CFC827E67DCAE34C72B9CED = {isa = PBXGroup; children = (932704417AB46D25E8F18983 /* Sources */, D4ED70D4D27623DE041795FF /* Resources */, 021F2B7F3E0C61452C987484 /* Products */); sourceTree = "<group>"; };
+		932704417AB46D25E8F18983 /* Sources */ = {isa = PBXGroup; children = (
+			AF700CF15D39946FA2E8625B /* AppModel.swift */,
+			8DED249AE82B0055C40F0B65 /* PlainwireApp.swift */,
+			6D10B1C1EB0418BCF485CBBB /* NotificationCoordinator.swift */,
+			F7D63A3770FF82BD12E2C9B1 /* SignInView.swift */,
+			A5A01871BC5EB0DE33309E76 /* ChatView.swift */,
+			43B4DBB822B30E737CE5CA95 /* ComposerBar.swift */,
+			CB49D84259D914539E712BF8 /* ConversationListView.swift */,
+			D961B7E0B8EE1BB8FB7681FE /* MessageRow.swift */,
+			E401933FA0812FE98B3D3E80 /* FriendsView.swift */,
+			871691B125B47B3BCF268CAA /* AppRootView.swift */,
+			C9E744E78ADAB2505FBDAD34 /* SidebarView.swift */,
+			3184BD3384792E7D97FC3B94 /* ServerViews.swift */,
+			A88F5D5826D96AE89F46178F /* SettingsView.swift */,
+			4ACE14CAD54AB8415A4DE5AD /* Visuals.swift */,
+			6AA47A85A0774302765036ED /* APIClient.swift */,
+			6D3504E65508A0D44AB339F8 /* APIError.swift */,
+			4CFE25F81A35E364E86E72E2 /* JSONValue.swift */,
+			5D863D093F042DF7FEED1EFF /* Models.swift */,
+			7C01E4B69B3F3DD7E295422B /* PlainwireConfiguration.swift */,
+			7650C688922D8B390B54D72B /* PlatformImports.swift */,
+			624886F9855EB70028E90E8F /* Realtime.swift */,
+		); name = Sources; sourceTree = "<group>"; };
+		D4ED70D4D27623DE041795FF /* Resources */ = {isa = PBXGroup; children = (9CCD11486CB5CFFBAC839C56 /* Assets.xcassets */, F2A202B54F237E9B2ECC0ACF /* Info.plist */, 6F0F39BF4E38A28B6840C428 /* Plainwire-macOS.entitlements */, A1B2C3D4E5F6012345678902 /* PrivacyInfo.xcprivacy */); name = Resources; sourceTree = "<group>"; };
+		021F2B7F3E0C61452C987484 /* Products */ = {isa = PBXGroup; children = (AEF63687048485D45524643C /* Plainwire.app */); name = Products; sourceTree = "<group>"; };
+		0E8A3AD980EC179856012B7E /* Plainwire */ = {isa = PBXNativeTarget; buildConfigurationList = E631DC8803DAA0784D7E8DD2 /* Build configuration list for PBXNativeTarget "Plainwire" */; buildPhases = (E4F78730D65EE9F55E2BAC2F /* Sources */, 7B8633C7EB6F5CB13673C25D /* Frameworks */, C52ABA055DA4D0050382EB56 /* Resources */); buildRules = (); dependencies = (); name = Plainwire; productName = Plainwire; productReference = AEF63687048485D45524643C /* Plainwire.app */; productType = "com.apple.product-type.application"; };
+		98F54143AB4E86B28C3AFEE0 /* Project object */ = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 2600; LastUpgradeCheck = 2600; TargetAttributes = {0E8A3AD980EC179856012B7E = {CreatedOnToolsVersion = 26.0; }; }; }; buildConfigurationList = 45A6A88DC85623F57ECF575D /* Build configuration list for PBXProject "Plainwire" */; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base); mainGroup = 6CFC827E67DCAE34C72B9CED; productRefGroup = 021F2B7F3E0C61452C987484 /* Products */; projectDirPath = ""; projectRoot = ""; targets = (0E8A3AD980EC179856012B7E /* Plainwire */); };
+		5E8ACABCCBE1DB5D311988C9 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {
+			ALWAYS_SEARCH_USER_PATHS = NO;
+			CLANG_ENABLE_MODULES = YES;
+			CLANG_ENABLE_OBJC_ARC = YES;
+			CLANG_WARN_BOOL_CONVERSION = YES;
+			CLANG_WARN_CONSTANT_CONVERSION = YES;
+			CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+			CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+			CLANG_WARN_EMPTY_BODY = YES;
+			CLANG_WARN_ENUM_CONVERSION = YES;
+			CLANG_WARN_INFINITE_RECURSION = YES;
+			CLANG_WARN_INT_CONVERSION = YES;
+			CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+			CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+			CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+			CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+			CLANG_WARN_STRICT_PROTOTYPES = YES;
+			CLANG_WARN_SUSPICIOUS_MOVE = YES;
+			CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+			COPY_PHASE_STRIP = NO;
+			ENABLE_STRICT_OBJC_MSGSEND = YES;
+			GCC_C_LANGUAGE_STANDARD = gnu17;
+			GCC_NO_COMMON_BLOCKS = YES;
+			MTL_FAST_MATH = YES;
+			SWIFT_VERSION = 6.0;
+			DEBUG_INFORMATION_FORMAT = dwarf;
+			ENABLE_TESTABILITY = YES;
+			GCC_OPTIMIZATION_LEVEL = 0;
+			ONLY_ACTIVE_ARCH = YES;
+			SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+			SWIFT_OPTIMIZATION_LEVEL = -Onone;
+		}; name = Debug; };
+		F84FD35CA8548076F2B51EDF /* Release */ = {isa = XCBuildConfiguration; buildSettings = {
+			ALWAYS_SEARCH_USER_PATHS = NO;
+			CLANG_ENABLE_MODULES = YES;
+			CLANG_ENABLE_OBJC_ARC = YES;
+			CLANG_WARN_BOOL_CONVERSION = YES;
+			CLANG_WARN_CONSTANT_CONVERSION = YES;
+			CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+			CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+			CLANG_WARN_EMPTY_BODY = YES;
+			CLANG_WARN_ENUM_CONVERSION = YES;
+			CLANG_WARN_INFINITE_RECURSION = YES;
+			CLANG_WARN_INT_CONVERSION = YES;
+			CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+			CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+			CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+			CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+			CLANG_WARN_STRICT_PROTOTYPES = YES;
+			CLANG_WARN_SUSPICIOUS_MOVE = YES;
+			CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+			COPY_PHASE_STRIP = NO;
+			ENABLE_STRICT_OBJC_MSGSEND = YES;
+			GCC_C_LANGUAGE_STANDARD = gnu17;
+			GCC_NO_COMMON_BLOCKS = YES;
+			MTL_FAST_MATH = YES;
+			SWIFT_VERSION = 6.0;
+			DEBUG_INFORMATION_FORMAT = dwarf-with-dsym;
+			ENABLE_NS_ASSERTIONS = NO;
+			SWIFT_COMPILATION_MODE = wholemodule;
+			SWIFT_OPTIMIZATION_LEVEL = -O;
+		}; name = Release; };
+		96F032C02E8A3FC1B0365FA6 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {
+			ASSETCATALOG_COMPILER_ACCENT_COLOR_NAME = AccentColor;
+			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+			CODE_SIGN_STYLE = Automatic;
+			CURRENT_PROJECT_VERSION = 2;
+			ENABLE_PREVIEWS = YES;
+			GENERATE_INFOPLIST_FILE = NO;
+			INFOPLIST_FILE = Resources/Info.plist;
+			IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+			MACOSX_DEPLOYMENT_TARGET = 15.0;
+			MARKETING_VERSION = 1.1.0;
+			PRODUCT_BUNDLE_IDENTIFIER = me.kokonico.plainwire;
+			PRODUCT_NAME = "$(TARGET_NAME)";
+			SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+			SUPPORTS_MACCATALYST = NO;
+			SWIFT_EMIT_LOC_STRINGS = YES;
+			SWIFT_STRICT_CONCURRENCY = complete;
+			SWIFT_VERSION = 6.0;
+			TARGETED_DEVICE_FAMILY = "1,2";
+			"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Resources/Plainwire-macOS.entitlements;
+			DEBUG_INFORMATION_FORMAT = dwarf;
+			SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+		}; name = Debug; };
+		5BDD486E465E20A146951F86 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {
+			ASSETCATALOG_COMPILER_ACCENT_COLOR_NAME = AccentColor;
+			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+			CODE_SIGN_STYLE = Automatic;
+			CURRENT_PROJECT_VERSION = 2;
+			ENABLE_PREVIEWS = YES;
+			GENERATE_INFOPLIST_FILE = NO;
+			INFOPLIST_FILE = Resources/Info.plist;
+			IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+			MACOSX_DEPLOYMENT_TARGET = 15.0;
+			MARKETING_VERSION = 1.1.0;
+			PRODUCT_BUNDLE_IDENTIFIER = me.kokonico.plainwire;
+			PRODUCT_NAME = "$(TARGET_NAME)";
+			SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+			SUPPORTS_MACCATALYST = NO;
+			SWIFT_EMIT_LOC_STRINGS = YES;
+			SWIFT_STRICT_CONCURRENCY = complete;
+			SWIFT_VERSION = 6.0;
+			TARGETED_DEVICE_FAMILY = "1,2";
+			"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Resources/Plainwire-macOS.entitlements;
+			DEBUG_INFORMATION_FORMAT = dwarf-with-dsym;
+		}; name = Release; };
+		45A6A88DC85623F57ECF575D /* Build configuration list for PBXProject "Plainwire" */ = {isa = XCConfigurationList; buildConfigurations = (5E8ACABCCBE1DB5D311988C9 /* Debug */, F84FD35CA8548076F2B51EDF /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		E631DC8803DAA0784D7E8DD2 /* Build configuration list for PBXNativeTarget "Plainwire" */ = {isa = XCConfigurationList; buildConfigurations = (96F032C02E8A3FC1B0365FA6 /* Debug */, 5BDD486E465E20A146951F86 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+	};
+	rootObject = 98F54143AB4E86B28C3AFEE0 /* Project object */;
+}

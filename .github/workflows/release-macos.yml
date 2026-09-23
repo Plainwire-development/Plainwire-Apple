@@ -1,0 +1,63 @@
+name: Mac release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag, such as v1.1.0
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mac-release-${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: macos-26
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4.4.0
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Use Xcode 26.6
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app
+
+      - name: Verify source and iOS build
+        run: |
+          ./scripts/verify.sh
+          xcodebuild -quiet -project Plainwire.xcodeproj -scheme Plainwire \
+            -configuration Debug -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build
+
+      - name: Build universal Mac archive
+        run: ./scripts/package-macos.sh "$RELEASE_TAG" "$RUNNER_TEMP/plainwire-release"
+
+      - name: Publish assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          archive="$RUNNER_TEMP/plainwire-release/Plainwire-macOS-universal.zip"
+          sums="$RUNNER_TEMP/plainwire-release/SHA256SUMS.txt"
+          installer="$RUNNER_TEMP/plainwire-release/install-macos.sh"
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" "$archive" "$sums" "$installer" \
+              --title "$RELEASE_TAG" --generate-notes --verify-tag
+          else
+            for asset in "$archive" "$sums" "$installer"; do
+              name=$(basename "$asset")
+              if ! gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' \
+                | grep -Fxq "$name"; then
+                gh release upload "$RELEASE_TAG" "$asset"
+              fi
+            done
+          fi
