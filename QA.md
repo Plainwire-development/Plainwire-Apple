@@ -18,6 +18,8 @@ Run `./scripts/verify.sh` and build the Mac and iOS Simulator targets before a r
 - Scroll up while a new message arrives. Confirm the view stays put and the new-message button appears.
 - Load older messages and confirm the current row keeps its position.
 - Check long messages and dates in light and dark mode, at large text sizes, and with VoiceOver.
+- Open a group chat and check the member panel at wide and narrow window sizes. Confirm profile links and presence dots update when a second account connects, disconnects, or changes status.
+- Type `@` in a group chat and a server channel. Pick a member, send the message, and confirm the recipient receives a mention notification and sees the message highlighted.
 - Open a member profile from Friends and from a message author. Check the avatar, banner, bio, status, and message action.
 - Edit your profile name, bio, status, avatar, banner, and theme. Restart and confirm the theme and account values persist.
 - Change the username, email, and password. Review active sessions, sign out other sessions, and verify the current device remains signed in.
@@ -27,6 +29,7 @@ Run `./scripts/verify.sh` and build the Mac and iOS Simulator targets before a r
 - Create a server, edit its name, description, welcome message, icon, banner, and accent. Create a category and text channel; edit a channel name and topic.
 - Set your nickname, avatar, and bio for one server. Confirm the global profile stays separate.
 - Create and share an invite. Join from another account by pasting the code or link, then revoke it and confirm it can no longer be used.
+- Open server settings on Mac and iPhone. Visit each section, edit appearance and profile, and verify invite lists load when `channel_id` is a string.
 - Open Workspace after signing in. Confirm it opens without a second login. Change a setting there, return to a native tab, and confirm it refreshes. Sign out in Workspace and confirm the native app signs out.
 - Check web voice/video permissions on real Mac and iOS devices if you use live calls.
 

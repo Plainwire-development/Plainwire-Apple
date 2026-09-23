@@ -11,10 +11,73 @@ struct ComposerBar: View {
   let onAttachSpoiler: () -> Void
   let onSend: () -> Void
 
+  private var mentionCandidates: [PWUser] {
+    guard let query = activeMentionQuery, let room = model.selectedRoom else { return [] }
+    let users: [PWUser]
+    if room.scope == "direct" {
+      users = model.conversationDetails[room.roomID]?.members.map(\.user) ?? []
+    } else if let serverID = model.selectedServerID {
+      users = model.serverDetails[serverID]?.members.map(\.user) ?? []
+    } else {
+      users = []
+    }
+    return users.filter { user in
+      query.isEmpty || user.username.lowercased().hasPrefix(query.lowercased())
+        || user.displayName.localizedCaseInsensitiveContains(query)
+    }
+    .sorted(by: { lhs, rhs in
+      let lhsPrefix = lhs.username.lowercased().hasPrefix(query.lowercased())
+      let rhsPrefix = rhs.username.lowercased().hasPrefix(query.lowercased())
+      if lhsPrefix != rhsPrefix { return lhsPrefix }
+      return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
+    })
+    .prefix(8)
+    .map { $0 }
+  }
+
+  private var activeMentionQuery: String? {
+    guard let at = text.lastIndex(of: "@") else { return nil }
+    if at != text.startIndex {
+      let before = text[text.index(before: at)]
+      guard before.isWhitespace else { return nil }
+    }
+    let query = String(text[text.index(after: at)...])
+    guard query.count <= 40,
+      query.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") })
+    else { return nil }
+    return query
+  }
+
   var body: some View {
     AdaptiveGlassContainer(spacing: 8) {
       VStack(spacing: 0) {
         if let replyingTo { replyStrip(replyingTo) }
+
+        if !mentionCandidates.isEmpty {
+          ScrollView {
+            LazyVStack(spacing: 2) {
+              ForEach(mentionCandidates) { user in
+                Button { insertMention(user.username) } label: {
+                  HStack(spacing: 9) {
+                    RemoteAvatar(url: model.mediaURL(user.avatarURL),
+                                 fallback: String(user.displayName.prefix(1)), size: 28)
+                    Text(user.displayName).lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text("@\(user.username)").font(.caption).foregroundStyle(.secondary)
+                      .lineLimit(1)
+                  }
+                  .padding(.horizontal, 9)
+                  .padding(.vertical, 5)
+                  .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+              }
+            }
+            .padding(5)
+          }
+          .frame(maxHeight: 192)
+          Divider().opacity(0.3)
+        }
 
         HStack(alignment: .bottom, spacing: 9) {
           Menu {
@@ -44,7 +107,10 @@ struct ComposerBar: View {
             .onChange(of: text) { _, _ in
               if sendTypingIndicators { model.noteTyping() }
             }
-            .onSubmit(onSend)
+            .onSubmit {
+              if let first = mentionCandidates.first { insertMention(first.username) }
+              else { onSend() }
+            }
 
           Button(action: onSend) {
             Image(systemName: "arrow.up")
@@ -95,5 +161,10 @@ struct ComposerBar: View {
 
   private var trimmedText: String {
     text.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private func insertMention(_ username: String) {
+    guard activeMentionQuery != nil, let at = text.lastIndex(of: "@") else { return }
+    text.replaceSubrange(at..<text.endIndex, with: "@\(username) ")
   }
 }

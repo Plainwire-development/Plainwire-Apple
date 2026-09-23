@@ -75,10 +75,23 @@ struct MessageRow: View {
       }
       .padding(.horizontal, 6)
       .padding(.vertical, presentation.startsGroup ? (compactMessages ? 5 : 8) : 2)
+      .background(isMentioned ? Color.accentColor.opacity(0.09) : Color.clear,
+                  in: RoundedRectangle(cornerRadius: 10))
       .contentShape(Rectangle())
       .modifier(MessageHoverSurfaceModifier())
     }
     .sheet(isPresented: $showingProfile) { PersonProfileSheet(userID: message.userId) }
+  }
+
+  private var isMentioned: Bool {
+    guard message.userId != model.session?.user.id,
+      let username = model.session?.user.username, !username.isEmpty
+    else { return false }
+    let body = message.body.replacingOccurrences(
+      of: #"(?s)```.*?```"#, with: "", options: .regularExpression)
+    let token = NSRegularExpression.escapedPattern(for: username)
+    let pattern = "(?:^|[^A-Za-z0-9_.-])@\(token)(?![A-Za-z0-9_-])"
+    return body.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
   }
 
   private var messageHeader: some View {

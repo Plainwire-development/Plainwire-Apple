@@ -73,6 +73,24 @@ public struct PWInvite: Codable, Hashable, Identifiable, Sendable {
     case createdAt = "created_at"
     case expiresAt = "expires_at"
   }
+
+  public init(from decoder: Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    code = try values.decode(String.self, forKey: .code)
+    if let number = try? values.decode(Int64.self, forKey: .channelId) {
+      channelId = number
+    } else if let text = try? values.decode(String.self, forKey: .channelId) {
+      // Older invite responses serialize this optional ID as a string.
+      channelId = Int64(text)
+    } else {
+      channelId = nil
+    }
+    maxUses = try values.decodeIfPresent(Int.self, forKey: .maxUses)
+    uses = try values.decodeIfPresent(Int.self, forKey: .uses)
+    createdAt = try values.decodeIfPresent(Int64.self, forKey: .createdAt)
+    expiresAt = try values.decodeIfPresent(Int64.self, forKey: .expiresAt)
+    revoked = try values.decodeIfPresent(Bool.self, forKey: .revoked)
+  }
 }
 
 public struct PWReaction: Codable, Hashable, Sendable {

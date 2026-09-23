@@ -28,6 +28,9 @@ struct ChatView: View {
   @State private var replyingTo: PWMessage?
   @State private var nearBottom = true
   @State private var unreadWhileScrolled = 0
+  @State private var showsMembers = true
+  @State private var showsMemberSheet = false
+  @State private var availableWidth: CGFloat = 0
   @FocusState private var composerFocused: Bool
 
   private let quickReactions = ["👍", "❤️", "😂", "🔥", "🎉", "😮", "😢", "👏"]
@@ -44,9 +47,79 @@ struct ChatView: View {
   var body: some View {
     ZStack {
       AppBackdrop()
-      VStack(spacing: 0) {
+      HStack(spacing: 0) {
+        chatColumn
+        if showsInlineMembers, let conversationID = groupConversationID {
+          Divider()
+          ConversationMembersSidebar(conversationID: conversationID)
+            .frame(width: 246)
+        }
+      }
+    }
+    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { _, width in
+      availableWidth = width
+    }
+    .navigationTitle(model.selectedRoom?.title ?? "Conversation")
+    .modifier(CompactToolbarTitleModifier())
+    .toolbar {
+      if !showsRoomHeader {
+        ToolbarItem(placement: .primaryAction) { ConnectionToolbarItem() }
+        if groupConversationID != nil {
+          ToolbarItem(placement: .primaryAction) {
+            Button { showsMemberSheet = true } label: {
+              Label("Members", systemImage: "person.2")
+            }
+          }
+        }
+      }
+    }
+    .task(id: taskIdentity) {
+      if let initialConversation {
+        await model.openConversation(initialConversation)
+      } else if let initialChannel {
+        await model.openChannel(initialChannel, server: initialServer)
+      } else {
+        await model.loadSelectedRoom()
+      }
+    }
+    .task(id: directConversationID) {
+      if let directConversationID {
+        await model.loadConversationDetails(directConversationID)
+      }
+    }
+    .fileImporter(
+      isPresented: $showImporter, allowedContentTypes: [.item], allowsMultipleSelection: true
+    ) { result in
+      guard case .success(let urls) = result, !urls.isEmpty else { return }
+      let spoiler = attachAsSpoiler
+      Task { await attach(urls, asSpoiler: spoiler) }
+    }
+    .sheet(item: $editingMessage) { message in editSheet(message) }
+    .sheet(isPresented: $showsMemberSheet) {
+      if let conversationID = groupConversationID {
+        NavigationStack {
+          ConversationMembersSidebar(conversationID: conversationID)
+            .navigationTitle("Members")
+            .toolbar {
+              ToolbarItem(placement: .confirmationAction) {
+                Button("Done") { showsMemberSheet = false }
+              }
+            }
+        }
+      }
+    }
+  }
+
+  private var chatColumn: some View {
+    VStack(spacing: 0) {
         if showsRoomHeader {
-          ChatRoomHeader()
+          ChatRoomHeader(
+            showsMemberButton: groupConversationID != nil,
+            membersVisible: showsInlineMembers,
+            onToggleMembers: {
+              if canShowInlineMembers { showsMembers.toggle() }
+              else { showsMemberSheet = true }
+            })
           Divider().opacity(0.32)
         }
 
@@ -73,32 +146,33 @@ struct ChatView: View {
         .padding(.horizontal, 12)
         .padding(.top, 8)
         .padding(.bottom, 10)
-      }
     }
-    .navigationTitle(model.selectedRoom?.title ?? "Conversation")
-    .modifier(CompactToolbarTitleModifier())
-    .toolbar {
-      if !showsRoomHeader {
-        ToolbarItem(placement: .primaryAction) { ConnectionToolbarItem() }
-      }
-    }
-    .task(id: taskIdentity) {
-      if let initialConversation {
-        await model.openConversation(initialConversation)
-      } else if let initialChannel {
-        await model.openChannel(initialChannel, server: initialServer)
-      } else {
-        await model.loadSelectedRoom()
-      }
-    }
-    .fileImporter(
-      isPresented: $showImporter, allowedContentTypes: [.item], allowsMultipleSelection: true
-    ) { result in
-      guard case .success(let urls) = result, !urls.isEmpty else { return }
-      let spoiler = attachAsSpoiler
-      Task { await attach(urls, asSpoiler: spoiler) }
-    }
-    .sheet(item: $editingMessage) { message in editSheet(message) }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  private var groupConversationID: PlainwireID? {
+    guard let room = model.selectedRoom, let id = directConversationID else { return nil }
+    let conversation = model.conversations.first(where: { $0.id == room.roomID })
+      ?? initialConversation
+    return (conversation?.memberCount ?? 0) > 2 ? id : nil
+  }
+
+  private var directConversationID: PlainwireID? {
+    guard let room = model.selectedRoom, room.scope == "direct" else { return nil }
+    return room.roomID
+  }
+
+  private var showsInlineMembers: Bool {
+    showsMembers && canShowInlineMembers
+  }
+
+  private var canShowInlineMembers: Bool {
+    guard groupConversationID != nil, availableWidth >= 660 else { return false }
+    #if os(iOS)
+      return horizontalSizeClass != .compact
+    #else
+      return true
+    #endif
   }
 
   private var showsRoomHeader: Bool {
@@ -320,6 +394,9 @@ struct ChatView: View {
 
 private struct ChatRoomHeader: View {
   @Environment(AppModel.self) private var model
+  let showsMemberButton: Bool
+  let membersVisible: Bool
+  let onToggleMembers: () -> Void
 
   var body: some View {
     HStack(spacing: 12) {
@@ -342,12 +419,121 @@ private struct ChatRoomHeader: View {
         }
       }
       Spacer(minLength: 12)
+      if showsMemberButton {
+        Button(action: onToggleMembers) {
+          Image(systemName: "person.2")
+            .frame(width: 28, height: 28)
+        }
+        .adaptiveGlassButton()
+        .help(membersVisible ? "Hide members" : "Show members")
+        .accessibilityLabel(membersVisible ? "Hide members" : "Show members")
+      }
       ConnectionStatusView()
         .frame(maxWidth: 150)
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 10)
     .background(.bar)
+  }
+}
+
+private struct ConversationMembersSidebar: View {
+  @Environment(AppModel.self) private var model
+  let conversationID: PlainwireID
+  @State private var selectedUser: PWUser?
+
+  private var members: [PWConversationMember] {
+    (model.conversationDetails[conversationID]?.members ?? []).sorted {
+      let lhsOwner = $0.role == "owner" || $0.groupRole == "owner"
+      let rhsOwner = $1.role == "owner" || $1.groupRole == "owner"
+      if lhsOwner != rhsOwner { return lhsOwner }
+      return $0.user.displayName.localizedCaseInsensitiveCompare($1.user.displayName) == .orderedAscending
+    }
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      HStack {
+        Text("Members").font(.headline)
+        Spacer()
+        if !members.isEmpty {
+          Text("\(members.count)").font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
+        }
+      }
+      .padding(.horizontal, 16)
+      .padding(.vertical, 16)
+      Divider()
+      if members.isEmpty {
+        ProgressView("Loading members…")
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+      } else {
+        ScrollView {
+          LazyVStack(spacing: 2) {
+            ForEach(members, id: \.user.id) { member in
+              Button { selectedUser = member.user } label: {
+                HStack(spacing: 10) {
+                  ZStack(alignment: .bottomTrailing) {
+                    RemoteAvatar(url: model.mediaURL(member.user.avatarURL),
+                                 fallback: String(member.user.displayName.prefix(1)), size: 34)
+                    presenceBadge(for: member.user)
+                      .offset(x: 2, y: 2)
+                  }
+                  VStack(alignment: .leading, spacing: 2) {
+                    Text(member.nickname.isEmpty ? member.user.displayName : member.nickname)
+                      .font(.subheadline.weight(.medium)).lineLimit(1)
+                    Text(member.groupRole == "owner" || member.role == "owner"
+                         ? "Owner" : "@\(member.user.username)")
+                      .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                  }
+                  Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .contentShape(Rectangle())
+              }
+              .buttonStyle(.plain)
+              .accessibilityLabel("\(member.user.displayName), \(presenceLabel(for: member.user))")
+            }
+          }
+          .padding(6)
+        }
+      }
+    }
+    .background(.bar)
+    .sheet(item: $selectedUser) { user in PersonProfileSheet(userID: user.id) }
+  }
+
+  private func statusColor(for user: PWUser) -> Color {
+    switch model.livePresenceStatus(for: user) {
+    case "online": .green
+    case "busy": .red
+    case "away": .orange
+    default: .secondary.opacity(0.65)
+    }
+  }
+
+  @ViewBuilder private func presenceBadge(for user: PWUser) -> some View {
+    if model.isUsingMacApp(user) {
+      Image(systemName: "apple.logo")
+        .font(.system(size: 9, weight: .semibold))
+        .foregroundStyle(.white)
+        .frame(width: 18, height: 18)
+        .background(.green, in: Circle())
+        .overlay(Circle().stroke(.background, lineWidth: 2))
+        .accessibilityHidden(true)
+    } else {
+      Circle().fill(statusColor(for: user))
+        .frame(width: 11, height: 11)
+        .overlay(Circle().stroke(.background, lineWidth: 2))
+        .accessibilityHidden(true)
+    }
+  }
+
+  private func presenceLabel(for user: PWUser) -> String {
+    guard let status = model.livePresenceStatus(for: user) else { return "presence unavailable" }
+    if model.isUsingMacApp(user) { return "online in the Mac app" }
+    return status
   }
 }
 

@@ -77,6 +77,13 @@ import Testing
   let event = PlainwireRealtimeEvent(type: "presence_state", payload: object)
   #expect(event.statuses[7] == "online")
   #expect(event.statuses[9] == "away")
+  #expect(event.platforms.isEmpty)
+
+  let withPlatform = #"{"type":"presence_state","statuses":{"7":"online"},"platforms":{"7":"macos"}}"#
+  let platformValue = try JSONDecoder().decode(JSONValue.self, from: Data(withPlatform.utf8))
+  let platformEvent = PlainwireRealtimeEvent(
+    type: "presence_state", payload: try #require(platformValue.objectValue))
+  #expect(platformEvent.platforms[7] == "macos")
 }
 
 @Test func mediaURLRejectsCredentialsAndExternalPlaintextHTTP() {
@@ -109,6 +116,10 @@ import Testing
   let decodedInvite = try JSONDecoder().decode(PWInvite.self, from: Data(invite.utf8))
   #expect(decodedInvite.code == "abc-123")
   #expect(decodedInvite.channelId == nil)
+
+  let mixedInvites = #"[{"code":"one","channel_id":"42"},{"code":"two","channel_id":43},{"code":"three","channel_id":""}]"#
+  let decodedMixedInvites = try JSONDecoder().decode([PWInvite].self, from: Data(mixedInvites.utf8))
+  #expect(decodedMixedInvites.map(\.channelId) == [42, 43, nil])
 
   let profile = #"{"user":{"id":7,"username":"robert","display_name":"Robert","bio":"Hello","avatar_url":"","banner_url":"","status":"online","theme":"system","created_at":1000,"last_seen":2000},"relationship":{"status":"none"}}"#
   let decodedProfile = try JSONDecoder().decode(PWProfile.self, from: Data(profile.utf8))

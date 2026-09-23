@@ -32,7 +32,8 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
     await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
   }
 
-  func notifyMessage(_ message: PWMessage, roomTitle: String?, selectedRoom: String?) {
+  func notifyMessage(_ message: PWMessage, roomTitle: String?, selectedRoom: String?,
+                     isMention: Bool = false) {
     let messageRoom = "\(message.scope):\(message.scopeId)"
     guard message.userId > 0,
       !(applicationIsActive && selectedRoom == messageRoom)
@@ -45,7 +46,7 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
     let playsSound = defaults.bool(forKey: AppPreferenceKeys.notificationSounds)
 
     let content = UNMutableNotificationContent()
-    content.title = roomTitle ?? message.displayName
+    content.title = isMention ? "Mention in \(roomTitle ?? "Plainwire")" : (roomTitle ?? message.displayName)
     content.subtitle = roomTitle == nil ? "" : message.displayName
     content.body = showsPreview ? previewText(for: message) : "New message"
     content.sound = playsSound ? .default : nil

@@ -1,8 +1,17 @@
 import Foundation
 
 public enum PlainwireClientInfo {
-  public static let version = "1.2.0"
-  public static let userAgent = "Plainwire-Apple/\(version)"
+  public static let version = "1.2.1"
+  public static var platform: String {
+    #if os(macOS)
+      "macos"
+    #elseif os(iOS)
+      "ios"
+    #else
+      "other"
+    #endif
+  }
+  public static let userAgent = "Plainwire-Apple/\(version) (\(platform))"
 }
 
 public struct PlainwireConfiguration: Hashable, Sendable {

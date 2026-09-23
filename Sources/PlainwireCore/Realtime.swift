@@ -36,12 +36,23 @@ public struct PlainwireRealtimeEvent: Sendable, Hashable {
   public var username: String? { payload["username"]?.stringValue }
   public var active: Bool? { payload["active"]?.boolValue }
   public var status: String? { payload["status"]?.stringValue }
+  public var platform: String? {
+    payload["client_platform"]?.stringValue ?? payload["platform"]?.stringValue
+  }
   public var statuses: [PlainwireID: String] {
     guard let object = payload["statuses"]?.objectValue else { return [:] }
     var result: [PlainwireID: String] = [:]
     result.reserveCapacity(object.count)
     for (key, value) in object {
       if let id = Int64(key), let status = value.stringValue { result[id] = status }
+    }
+    return result
+  }
+  public var platforms: [PlainwireID: String] {
+    guard let object = payload["platforms"]?.objectValue else { return [:] }
+    var result: [PlainwireID: String] = [:]
+    for (key, value) in object {
+      if let id = Int64(key), let platform = value.stringValue { result[id] = platform }
     }
     return result
   }
@@ -175,6 +186,7 @@ public actor PlainwireRealtimeClient {
     request.timeoutInterval = 30
     request.setValue(configuration.originHeader, forHTTPHeaderField: "Origin")
     request.setValue(PlainwireClientInfo.userAgent, forHTTPHeaderField: "User-Agent")
+    request.setValue(PlainwireClientInfo.platform, forHTTPHeaderField: "X-Plainwire-Client-Platform")
     let socket = session.webSocketTask(with: request)
     webSocket = socket
     socket.resume()

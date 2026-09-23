@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.1
+
+- Reorganized server settings into focused pages with a wider Mac layout.
+- Fixed invite responses that encode channel IDs as strings, and simplified data error messages.
+- Added a member panel for group chats with live presence indicators and profile access.
+- Added `@username` suggestions, mention highlights, and native mention notifications.
+- Added a system Apple logo presence badge when Mac app activity is confirmed.
+
 ## 1.2.0
 
 - Added native profile editing and member profile viewing.

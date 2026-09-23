@@ -86,6 +86,7 @@ final class AppModel {
   var servers: [PWServer] = []
   var friends: [PWFriend] = []
   var serverDetails: [PlainwireID: PWServerDetail] = [:]
+  var conversationDetails: [PlainwireID: PWConversationDetail] = [:]
   var roomMessages: [String: [PWMessage]] = [:]
   private var roomPresentations: [String: [MessagePresentation]] = [:]
   var realtimeState: PlainwireRealtimeState = .stopped
@@ -95,6 +96,7 @@ final class AppModel {
   var syncWarning: String?
   var typingByRoom: [String: [PlainwireID: String]] = [:]
   private var livePresence: [PlainwireID: String] = [:]
+  private var livePlatforms: [PlainwireID: String] = [:]
 
   init() {
     api = PlainwireAPIClient(configuration: config)
@@ -162,6 +164,7 @@ final class AppModel {
     typingExpiryTasks = [:]
     typingByRoom = [:]
     livePresence = [:]
+    livePlatforms = [:]
     session = nil
     conversations = []
     servers = []
@@ -170,6 +173,7 @@ final class AppModel {
     roomPresentations = [:]
     roomAccessOrder = []
     serverDetails = [:]
+    conversationDetails = [:]
     selectedRoom = nil
     selectedServerID = nil
     selectedChannelID = nil
@@ -425,6 +429,13 @@ final class AppModel {
     scheduleSync()
   }
 
+  func loadConversationDetails(_ id: PlainwireID) async {
+    do {
+      conversationDetails[id] = try await api.conversation(id: id)
+      await updatePresenceWatch()
+    } catch { errorMessage = error.localizedDescription }
+  }
+
   func openServer(_ server: PWServer) async {
     selectedSection = .servers
     selectedServerID = server.id
@@ -597,6 +608,20 @@ final class AppModel {
     livePresence[user.id] ?? user.status
   }
 
+  func livePresenceStatus(for user: PWUser) -> String? {
+    guard realtimeState == .connected else { return nil }
+    return livePresence[user.id]
+  }
+
+  func isUsingMacApp(_ user: PWUser) -> Bool {
+    guard livePresenceStatus(for: user) == "online" else { return false }
+    #if os(macOS)
+      if user.id == session?.user.id { return true }
+    #endif
+    return ["macos", "mac", "plainwire-apple-mac"].contains(
+      livePlatforms[user.id]?.lowercased() ?? "")
+  }
+
   func handleDeepLink(_ url: URL) async {
     let components = url.pathComponents.filter { $0 != "/" }
     let host = url.host?.lowercased()
@@ -637,6 +662,9 @@ final class AppModel {
     for friend in friends where friend.status == "accepted" { ids.insert(friend.user.id) }
     for conversation in conversations {
       if let peerID = conversation.peerId { ids.insert(peerID) }
+    }
+    for detail in conversationDetails.values {
+      for member in detail.members { ids.insert(member.user.id) }
     }
     for detail in serverDetails.values {
       for member in detail.members { ids.insert(member.user.id) }
@@ -689,6 +717,10 @@ final class AppModel {
       for await value in states {
         guard !Task.isCancelled else { break }
         self.realtimeState = value
+        if value != .connected {
+          self.livePresence = [:]
+          self.livePlatforms = [:]
+        }
       }
     }
     Task { await realtime.start() }
@@ -703,10 +735,10 @@ final class AppModel {
         notifyIncomingMessage(message)
       }
       scheduleSync()
-    case "direct_message", "channel_message":
+    case "direct_message", "channel_message", "mention":
       if let message = event.message {
         upsert(message, in: "\(message.scope):\(message.scopeId)")
-        notifyIncomingMessage(message)
+        notifyIncomingMessage(message, isMention: event.type == "mention")
       }
       scheduleSync()
     case "message_updated":
@@ -725,7 +757,15 @@ final class AppModel {
         await refreshMessage(messageID, room: room)
       }
     case "conversation_updated", "conversation_created", "conversation_members_changed",
-      "realtime_resync", "access_revoked":
+      "conversation_members_added", "conversation_member_removed", "realtime_resync",
+      "access_revoked":
+      if let id = event.conversationID, conversationDetails[id] != nil,
+        event.type != "access_revoked" {
+        await loadConversationDetails(id)
+      }
+      if event.type == "access_revoked", let id = event.conversationID {
+        conversationDetails[id] = nil
+      }
       scheduleSync(delay: .milliseconds(250))
     case "server_updated", "channel_created", "channel_updated", "channel_moved",
       "category_created", "category_updated", "category_deleted", "categories_reordered",
@@ -738,11 +778,20 @@ final class AppModel {
       }
       scheduleSync(delay: .milliseconds(250))
     case "presence_state":
-      for (id, status) in event.statuses { livePresence[id] = status }
+      for (id, status) in event.statuses {
+        livePresence[id] = status
+        livePlatforms[id] = event.platforms[id]
+      }
     case "presence_online", "presence_status":
-      if let userID = event.userID, let status = event.status { livePresence[userID] = status }
+      if let userID = event.userID, let status = event.status {
+        livePresence[userID] = status
+        livePlatforms[userID] = event.platform
+      }
     case "presence_offline":
-      if let userID = event.userID { livePresence[userID] = "offline" }
+      if let userID = event.userID {
+        livePresence[userID] = "offline"
+        livePlatforms[userID] = nil
+      }
     case "typing":
       handleTyping(event)
     case "account_deleted": await logout()
@@ -750,8 +799,9 @@ final class AppModel {
     }
   }
 
-  private func notifyIncomingMessage(_ message: PWMessage) {
+  private func notifyIncomingMessage(_ message: PWMessage, isMention: Bool = false) {
     guard message.userId != session?.user.id else { return }
+    if message.scope == "channel" && !isMention { return }
     let conversation = message.scope == "direct"
       ? conversations.first(where: { $0.id == message.scopeId }) : nil
     if conversation?.muted == true { return }
@@ -762,7 +812,8 @@ final class AppModel {
         .first(where: { $0.id == message.scopeId })
         .map { "# \($0.name)" }
     NotificationCoordinator.shared.notifyMessage(
-      message, roomTitle: title, selectedRoom: selectedRoom?.identifier)
+      message, roomTitle: title, selectedRoom: selectedRoom?.identifier,
+      isMention: isMention)
   }
 
   private func handleTyping(_ event: PlainwireRealtimeEvent) {

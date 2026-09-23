@@ -365,6 +365,21 @@ private struct JoinServerSheet: View {
 }
 
 private struct ServerManagementSheet: View {
+  private enum Page: String, CaseIterable, Identifiable {
+    case overview, channels, invites, members, profile
+    var id: Self { self }
+    var title: String { rawValue.capitalized }
+    var symbol: String {
+      switch self {
+      case .overview: "paintbrush.pointed"
+      case .channels: "number"
+      case .invites: "link"
+      case .members: "person.2"
+      case .profile: "person.crop.circle"
+      }
+    }
+  }
+
   @Environment(AppModel.self) private var model
   @Environment(\.dismiss) private var dismiss
   let server: PWServer
@@ -387,6 +402,7 @@ private struct ServerManagementSheet: View {
   @State private var imageField = "icon"
   @State private var busy = false
   @State private var notice = ""
+  @State private var page: Page = .overview
 
   init(server: PWServer) {
     self.server = server
@@ -408,138 +424,52 @@ private struct ServerManagementSheet: View {
   private var canManageChannels: Bool { hasPermission(1 << 3) }
   private var canCreateInvites: Bool { hasPermission(1 << 8) }
   private var canManageInvites: Bool { hasPermission(1 << 11) }
+  private var previewColor: Color {
+    let value = accentColor.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+    guard value.count == 6, let rgb = UInt64(value, radix: 16) else { return .accentColor }
+    return Color(red: Double((rgb >> 16) & 255) / 255,
+                 green: Double((rgb >> 8) & 255) / 255,
+                 blue: Double(rgb & 255) / 255)
+  }
+  private var availablePages: [Page] {
+    Page.allCases.filter { page in
+      switch page {
+      case .channels: canManageChannels
+      case .invites: canCreateInvites || canManageInvites
+      default: true
+      }
+    }
+  }
 
   var body: some View {
     NavigationStack {
-      Form {
-        if !notice.isEmpty {
-          Section { Label(notice, systemImage: "checkmark.circle.fill").foregroundStyle(.green) }
-        }
-        Section {
-          HStack(spacing: 14) {
-            RemoteAvatar(url: model.mediaURL(iconURL), fallback: String(name.prefix(1)), size: 56,
-                         cornerRadius: 15)
-            VStack(alignment: .leading) {
-              Text(name).font(.headline)
-              Text("\(server.memberCount) members").font(.caption).foregroundStyle(.secondary)
-            }
-          }
-          if !description.isEmpty { Text(description).foregroundStyle(.secondary) }
-          if !welcomeMessage.isEmpty { Text(welcomeMessage).font(.callout) }
-        }
-        if canManageServer {
-          Section("Server appearance") {
-            TextField("Name", text: $name)
-            TextField("Description", text: $description, axis: .vertical).lineLimit(2...4)
-            TextField("Welcome message", text: $welcomeMessage, axis: .vertical).lineLimit(2...5)
-            HStack {
-              Text("Accent color")
-              Spacer()
-              TextField("#5865f2", text: $accentColor)
-                .multilineTextAlignment(.trailing).frame(width: 110)
-            }
-            Button("Choose icon") { imageField = "icon"; pickingImage = true }
-            Button("Choose banner") { imageField = "banner"; pickingImage = true }
-            Button("Save server changes") { Task { await saveServer() } }
-              .disabled(busy || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      Group {
+#if os(macOS)
+      HStack(spacing: 0) {
+        pageSidebar
+        Divider()
+        settingsForm
+      }
+#else
+      VStack(spacing: 0) {
+        Picker("Settings section", selection: $page) {
+          ForEach(availablePages) { item in
+            Label(item.title, systemImage: item.symbol).tag(item)
           }
         }
-        Section("My server profile") {
-          TextField("Nickname", text: $nickname)
-          TextField("Bio", text: $memberBio, axis: .vertical).lineLimit(2...4)
-          Button("Choose server avatar") { imageField = "member"; pickingImage = true }
-          Button("Save my server profile") { Task { await saveMemberProfile() } }
-            .disabled(busy)
-        }
-        if canManageChannels {
-          Section("Channels and categories") {
-            if let detail {
-              ForEach(detail.channels.sorted(by: { $0.position < $1.position })) { channel in
-                Button {
-                  editingChannel = channel
-                } label: {
-                  Label(channel.name, systemImage: channel.kind == "voice" ? "speaker.wave.2" : "number")
-                }
-              }
-            }
-            TextField("New category", text: $categoryName)
-            Button("Create category") { Task { await createCategory() } }
-              .disabled(busy || categoryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            TextField("New channel", text: $channelName)
-            Picker("Channel type", selection: $channelKind) {
-              Text("Text").tag("text")
-              Text("Voice").tag("voice")
-            }
-            Picker("Category", selection: $categoryID) {
-              Text("No category").tag(nil as PlainwireID?)
-              ForEach(detail?.categories ?? []) { category in
-                Text(category.name).tag(Optional(category.id))
-              }
-            }
-            Button("Create channel") { Task { await createChannel() } }
-              .disabled(busy || channelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-          }
-        }
-        if canCreateInvites || canManageInvites {
-          Section("Invite links") {
-            if canCreateInvites {
-              Button("Create invite link") { Task { await createInvite() } }
-                .disabled(busy)
-            }
-            ForEach(invites.filter { $0.revoked != true }) { invite in
-              HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                  Text(invite.code).font(.caption.monospaced()).lineLimit(1)
-                  if let uses = invite.uses {
-                    Text("\(uses) uses").font(.caption2).foregroundStyle(.secondary)
-                  }
-                }
-                Spacer()
-                if let url = URL(string: "https://plainwi.re/#wire/\(invite.code)") {
-                  ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
-                    .accessibilityLabel("Share invite")
-                }
-                if canManageInvites {
-                  Button(role: .destructive) { Task { await revoke(invite) } } label: {
-                    Image(systemName: "trash")
-                  }
-                  .accessibilityLabel("Revoke invite")
-                }
-              }
-            }
-          }
-        }
-        if let detail {
-          Section("Members") {
-            ForEach(detail.members, id: \.user.id) { member in
-              HStack(spacing: 10) {
-                RemoteAvatar(url: model.mediaURL(member.serverAvatarURL ?? member.user.avatarURL),
-                             fallback: String(member.user.displayName.prefix(1)), size: 32)
-                VStack(alignment: .leading) {
-                  Text((member.nickname?.isEmpty == false ? member.nickname : nil)
-                       ?? member.user.displayName)
-                  Text("@\(member.user.username)").font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Text(member.role.capitalized).font(.caption).foregroundStyle(.secondary)
-              }
-            }
-          }
-        }
-        Section("More tools") {
-          Button {
-            model.workspaceStartFragment = "server/\(server.id)"
-            model.selectedSection = .workspace
-            dismiss()
-          } label: {
-            Label("Open server in full workspace", systemImage: "square.grid.2x2")
-          }
-        }
+        .pickerStyle(.menu)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+        Divider()
+        settingsForm
+      }
+#endif
       }
       .navigationTitle("Server Settings")
       .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
     }
-    .frame(minWidth: 440, idealWidth: 620, minHeight: 560)
+    .modifier(ServerManagementFrameModifier())
     .task {
       if detail == nil { await model.reloadServer(server.id) }
       if let me = detail?.members.first(where: { $0.user.id == model.session?.user.id }) {
@@ -562,6 +492,247 @@ private struct ServerManagementSheet: View {
           }
         }
       }
+    }
+  }
+
+#if os(macOS)
+  private var pageSidebar: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text("SERVER SETTINGS")
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 12)
+        .padding(.top, 18)
+        .padding(.bottom, 8)
+      ForEach(availablePages) { item in
+        Button { page = item; notice = "" } label: {
+          Label(item.title, systemImage: item.symbol)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(page == item ? Color.accentColor.opacity(0.14) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 9))
+        .fontWeight(page == item ? .semibold : .regular)
+      }
+      Spacer(minLength: 0)
+      Text(server.name).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+        .padding(12)
+    }
+    .padding(.horizontal, 10)
+    .frame(width: 190)
+    .background(.bar)
+  }
+#endif
+
+  private var settingsForm: some View {
+    Form {
+      if !notice.isEmpty {
+        Section { Label(notice, systemImage: "checkmark.circle.fill").foregroundStyle(.green) }
+      }
+      switch page {
+      case .overview:
+        overviewSections
+      case .channels:
+        channelSections
+      case .invites:
+        inviteSections
+      case .members:
+        memberSections
+      case .profile:
+        profileSections
+      }
+    }
+    .formStyle(.grouped)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  @ViewBuilder private var overviewSections: some View {
+    Section {
+      ZStack(alignment: .bottomLeading) {
+        LinearGradient(colors: [previewColor, previewColor.opacity(0.55), .black.opacity(0.75)],
+                       startPoint: .topLeading, endPoint: .bottomTrailing)
+        CachedRemoteImage(url: model.mediaURL(bannerURL), pixelSize: 1200) { phase in
+          if case .success(let image) = phase {
+            image.resizable().scaledToFill()
+          } else {
+            Color.clear
+          }
+        }
+        .frame(height: 144)
+        .clipped()
+        LinearGradient(colors: [.clear, .black.opacity(0.55)],
+                       startPoint: .center, endPoint: .bottom)
+        HStack(spacing: 14) {
+          RemoteAvatar(url: model.mediaURL(iconURL), fallback: String(name.prefix(1)),
+                       size: 58, cornerRadius: 15)
+          VStack(alignment: .leading, spacing: 5) {
+            Text(name).font(.title3.weight(.semibold)).lineLimit(2)
+            Label("\(server.memberCount) members", systemImage: "person.2")
+              .font(.caption)
+          }
+          Spacer(minLength: 0)
+        }
+        .foregroundStyle(.white)
+        .padding(16)
+      }
+      .frame(height: 144)
+      .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+      if !description.isEmpty { Text(description).foregroundStyle(.secondary) }
+      if !welcomeMessage.isEmpty { Text(welcomeMessage).font(.callout) }
+    }
+    if canManageServer {
+      Section("Appearance") {
+        TextField("Server name", text: $name)
+        TextField("Description", text: $description, axis: .vertical).lineLimit(2...4)
+        TextField("Welcome message", text: $welcomeMessage, axis: .vertical).lineLimit(2...5)
+        HStack {
+          Text("Accent color")
+          Spacer(minLength: 12)
+          Circle().fill(previewColor).frame(width: 18, height: 18)
+            .overlay(Circle().stroke(.primary.opacity(0.14), lineWidth: 1))
+          TextField("#5865f2", text: $accentColor)
+            .multilineTextAlignment(.trailing).frame(width: 110)
+        }
+        Button { imageField = "icon"; pickingImage = true } label: {
+          Label("Choose icon", systemImage: "photo.circle")
+        }
+        Button { imageField = "banner"; pickingImage = true } label: {
+          Label("Choose banner", systemImage: "photo.on.rectangle")
+        }
+      }
+      Section {
+        Button("Save server changes") { Task { await saveServer() } }
+          .buttonStyle(.borderedProminent)
+          .disabled(busy || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      }
+    }
+    Section("More tools") {
+      Button {
+        model.workspaceStartFragment = "server/\(server.id)"
+        model.selectedSection = .workspace
+        dismiss()
+      } label: {
+        Label("Open server in full workspace", systemImage: "square.grid.2x2")
+      }
+    }
+  }
+
+  @ViewBuilder private var channelSections: some View {
+    Section("Channels") {
+      if let detail, !detail.channels.isEmpty {
+        ForEach(detail.channels.sorted(by: { $0.position < $1.position })) { channel in
+          Button { editingChannel = channel } label: {
+            HStack {
+              Label(channel.name, systemImage: channel.kind == "voice" ? "speaker.wave.2" : "number")
+              Spacer()
+              Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+            }
+          }
+          .buttonStyle(.plain)
+        }
+      } else {
+        Text("No channels yet.").foregroundStyle(.secondary)
+      }
+    }
+    Section("Create category") {
+      TextField("Category name", text: $categoryName)
+      Button("Create category") { Task { await createCategory() } }
+        .disabled(busy || categoryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+    Section("Create channel") {
+      TextField("Channel name", text: $channelName)
+      Picker("Type", selection: $channelKind) {
+        Text("Text").tag("text")
+        Text("Voice").tag("voice")
+      }
+      Picker("Category", selection: $categoryID) {
+        Text("No category").tag(nil as PlainwireID?)
+        ForEach(detail?.categories ?? []) { category in
+          Text(category.name).tag(Optional(category.id))
+        }
+      }
+      Button("Create channel") { Task { await createChannel() } }
+        .buttonStyle(.borderedProminent)
+        .disabled(busy || channelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+  }
+
+  @ViewBuilder private var inviteSections: some View {
+    Section("Invite links") {
+      if invites.allSatisfy({ $0.revoked == true }) {
+        Text("No active invites.").foregroundStyle(.secondary)
+      }
+      ForEach(invites.filter { $0.revoked != true }) { invite in
+        HStack(spacing: 12) {
+          VStack(alignment: .leading, spacing: 3) {
+            Text(invite.code).font(.body.monospaced()).textSelection(.enabled).lineLimit(1)
+            if let uses = invite.uses {
+              Text("\(uses) uses").font(.caption).foregroundStyle(.secondary)
+            }
+          }
+          Spacer(minLength: 4)
+          if let url = URL(string: "https://plainwi.re/#wire/\(invite.code)") {
+            ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
+              .accessibilityLabel("Share invite")
+          }
+          if canManageInvites {
+            Button(role: .destructive) { Task { await revoke(invite) } } label: {
+              Image(systemName: "trash")
+            }
+            .accessibilityLabel("Revoke invite")
+          }
+        }
+      }
+    }
+    if canCreateInvites {
+      Section {
+        Button("Create invite link") { Task { await createInvite() } }
+          .buttonStyle(.borderedProminent)
+          .disabled(busy)
+      }
+    }
+  }
+
+  @ViewBuilder private var memberSections: some View {
+    Section("Members") {
+      if let detail {
+        ForEach(detail.members, id: \.user.id) { member in
+          HStack(spacing: 12) {
+            RemoteAvatar(url: model.mediaURL(member.serverAvatarURL ?? member.user.avatarURL),
+                         fallback: String(member.user.displayName.prefix(1)), size: 36)
+            VStack(alignment: .leading, spacing: 2) {
+              Text((member.nickname?.isEmpty == false ? member.nickname : nil)
+                   ?? member.user.displayName)
+              Text("@\(member.user.username)").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Text(member.role.capitalized).font(.caption).foregroundStyle(.secondary)
+          }
+          .padding(.vertical, 3)
+        }
+      } else {
+        ProgressView("Loading members…")
+      }
+    }
+  }
+
+  @ViewBuilder private var profileSections: some View {
+    Section("My server profile") {
+      Text("Your nickname, bio, and avatar here can differ from your account profile.")
+        .font(.callout).foregroundStyle(.secondary)
+      TextField("Nickname", text: $nickname)
+      TextField("Bio", text: $memberBio, axis: .vertical).lineLimit(2...4)
+      Button { imageField = "member"; pickingImage = true } label: {
+        Label("Choose server avatar", systemImage: "person.crop.circle.badge.plus")
+      }
+    }
+    Section {
+      Button("Save my server profile") { Task { await saveMemberProfile() } }
+        .buttonStyle(.borderedProminent)
+        .disabled(busy)
     }
   }
 
@@ -620,6 +791,16 @@ private struct ServerManagementSheet: View {
       invites.removeAll { $0.code == invite.code }
       notice = "Invite revoked."
     }
+  }
+}
+
+private struct ServerManagementFrameModifier: ViewModifier {
+  @ViewBuilder func body(content: Content) -> some View {
+    #if os(macOS)
+      content.frame(minWidth: 740, idealWidth: 820, minHeight: 610, idealHeight: 700)
+    #else
+      content
+    #endif
   }
 }
 
