@@ -749,8 +749,9 @@ private extension KeyedDecodingContainer {
 
   func optionalWireInteger<T: FixedWidthInteger & Decodable>(_ type: T.Type, forKey key: Key) throws -> T? {
     guard contains(key), try !decodeNil(forKey: key) else { return nil }
-    // Legacy optional invite channel IDs use an empty string for no channel.
-    if let text = try? decode(String.self, forKey: key), text.isEmpty { return nil }
+    // Unnormalized SQL null atoms become "null" strings in pw_util:jsonable.
+    // Older optional invite channel IDs also use an empty string for no channel.
+    if let text = try? decode(String.self, forKey: key), text.isEmpty || text == "null" { return nil }
     return try wireInteger(type, forKey: key)
   }
 }

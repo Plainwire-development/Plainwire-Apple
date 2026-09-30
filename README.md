@@ -42,7 +42,7 @@ Open `Plainwire.xcodeproj` in Xcode, select the `Plainwire` scheme, choose a sim
 
 ## What it does
 
-This checkout is the 2.0.0 update. See [release notes](RELEASE_NOTES_2.0.0.md) for the changes and validation status; published downloads may still be an earlier version.
+This checkout includes the 2.0.1 sync hotfix. See [the changelog](CHANGELOG.md) and [2.0 release notes](RELEASE_NOTES_2.0.0.md) for the changes and validation status.
 
 Plainwire supports direct and group messages, channels, friends, reactions, replies, forwarding, pins, message search, message requests, an activity inbox, file uploads, attachment previews, voice-note recording and playback, spoiler text and attachments, inline video, and live presence. Room drafts survive navigation and relaunch and are cleared when you sign out. You can view other members' profiles, edit your own profile and images, manage account credentials and sessions, and create, join, and customize servers. Group controls include names, members, moderators, and leaving or closing a conversation. Server controls include appearance, your server profile, channels, slow mode, categories, members, and invite links. Images are cached and resized for the screen. On Mac and iPad, conversations use a wider split view; iPhone uses tabs.
 

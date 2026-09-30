@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.1
+
+- Fixed sync failing when an empty conversation's `last_message_id` is the string `"null"`. The backend can serialize SQL null atoms this way; optional numeric fields now accept it as absent while required IDs and malformed numbers remain checked.
+- Added regression coverage for the exact conversation index failure, optional message timestamps and references, and uncategorized channels.
+
 ## 2.0.0
 
 - Fixed null response fields, command acknowledgements without data, password errors, and unsafe numeric ID conversion.

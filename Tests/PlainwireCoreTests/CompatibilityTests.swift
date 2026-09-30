@@ -27,6 +27,49 @@ import FoundationNetworking
   #expect(!snapshot.syncDegraded)
 }
 
+@Test func databaseNullStringDoesNotBreakConversationSync() async throws {
+  // conversation_row_map passes SQL null through unchanged. pw_util:jsonable
+  // serializes that Erlang atom as the string "null", rather than JSON null.
+  let conversations = (0..<10).map { index in
+    index == 9
+      ? #"{"id":12,"owner_id":4,"last_body":"","last_message_id":"null","last_sender_id":0}"#
+      : "{\"id\":\(index + 1),\"owner_id\":4,\"last_message_id\":42}"
+  }.joined(separator: ",")
+  let response = "{\"ok\":true,\"data\":{\"now\":9,\"since\":0,\"conversations\":[\(conversations)]}}"
+  try await withFixture({ _ in (200, response) }) { client in
+    let snapshot = try await client.sync()
+    #expect(snapshot.conversations.count == 10)
+    #expect(snapshot.conversations[0].lastMessageId == 42)
+    #expect(snapshot.conversations[9].id == 12)
+    #expect(snapshot.conversations[9].lastMessageId == nil)
+  }
+}
+
+@Test func optionalIntegerNullRepresentationsRemainDistinctFromInvalidIDs() throws {
+  for value in ["null", #""null""#, #""""#] {
+    let conversation = "{\"id\":12,\"owner_id\":4,\"last_message_id\":\(value)}"
+    let decoded = try JSONDecoder().decode(PWConversation.self, from: Data(conversation.utf8))
+    #expect(decoded.lastMessageId == nil)
+    let message = "{\"id\":1,\"scope\":\"direct\",\"scope_id\":12,\"user_id\":4,\"body\":\"hello\",\"reply_to_id\":\(value),\"edited_at\":\(value),\"deleted_at\":\(value)}"
+    let decodedMessage = try JSONDecoder().decode(PWMessage.self, from: Data(message.utf8))
+    #expect(decodedMessage.replyToId == nil)
+    #expect(decodedMessage.editedAt == nil)
+    #expect(decodedMessage.deletedAt == nil)
+    let channel = "{\"id\":2,\"server_id\":3,\"category_id\":\(value)}"
+    #expect(try JSONDecoder().decode(PWChannel.self, from: Data(channel.utf8)).categoryId == nil)
+  }
+  for value in [#""wrong""#, #""9223372036854775808""#, "true", "{}", "[]", "1.5"] {
+    let conversation = "{\"id\":12,\"owner_id\":4,\"last_message_id\":\(value)}"
+    #expect(throws: DecodingError.self) {
+      try JSONDecoder().decode(PWConversation.self, from: Data(conversation.utf8))
+    }
+  }
+  let invalidRequiredID = #"{"id":"null","owner_id":4}"#
+  #expect(throws: DecodingError.self) {
+    try JSONDecoder().decode(PWConversation.self, from: Data(invalidRequiredID.utf8))
+  }
+}
+
 @Test func legacyServerAndGroupDetailsDecode() throws {
   let user = #"{"id":4,"username":"alice"}"#
   let group = "{\"conversation\":{\"id\":1,\"owner_id\":4},\"members\":[{\"user\":\(user)}]}"
