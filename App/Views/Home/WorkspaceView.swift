@@ -12,10 +12,10 @@ final class WorkspaceController: NSObject, WKNavigationDelegate, WKUIDelegate, W
   @ObservationIgnored private var cookieStore: WKHTTPCookieStore?
   @ObservationIgnored private var downloads: [ObjectIdentifier: WKDownload] = [:]
   @ObservationIgnored private var downloadPaths: [ObjectIdentifier: URL] = [:]
-  @ObservationIgnored private var promptCompletion: ((String?) -> Void)?
+  @ObservationIgnored private var promptCompletion: (@MainActor @Sendable (String?) -> Void)?
   var dialogIsPrompt = false
   var dialogInput = ""
-  @ObservationIgnored private var dialogCompletion: ((Bool) -> Void)?
+  @ObservationIgnored private var dialogCompletion: (@MainActor @Sendable (Bool) -> Void)?
   var loading = true
   var error: String?
   var dialogMessage: String?
@@ -117,7 +117,7 @@ final class WorkspaceController: NSObject, WKNavigationDelegate, WKUIDelegate, W
   }
 
   func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
-               decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+               decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
     guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
     if navigationAction.shouldPerformDownload { decisionHandler(.download); return }
     if trusted(url) || url.scheme == "about" || url.scheme == "blob" {
@@ -134,7 +134,7 @@ final class WorkspaceController: NSObject, WKNavigationDelegate, WKUIDelegate, W
   }
 
   func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse,
-               decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+               decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void) {
     let disposition = (navigationResponse.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition") ?? ""
     decisionHandler(!navigationResponse.canShowMIMEType || disposition.lowercased().hasPrefix("attachment") ? .download : .allow)
   }
@@ -164,19 +164,19 @@ final class WorkspaceController: NSObject, WKNavigationDelegate, WKUIDelegate, W
 
   func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
                initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
-               decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+               decisionHandler: @escaping @MainActor @Sendable (WKPermissionDecision) -> Void) {
     decisionHandler(origin.host == baseURL.host && origin.protocol == baseURL.scheme ? .prompt : .deny)
   }
 
   func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
-               initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+               initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable () -> Void) {
     dialogIsConfirmation = false
     dialogIsPrompt = false
     dialogMessage = message
     dialogCompletion = { _ in completionHandler() }
   }
   func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
-               initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+               initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable (Bool) -> Void) {
     dialogIsConfirmation = true
     dialogIsPrompt = false
     dialogMessage = message
@@ -184,7 +184,7 @@ final class WorkspaceController: NSObject, WKNavigationDelegate, WKUIDelegate, W
   }
   func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String,
                defaultText: String?, initiatedByFrame frame: WKFrameInfo,
-               completionHandler: @escaping (String?) -> Void) {
+               completionHandler: @escaping @MainActor @Sendable (String?) -> Void) {
     dialogIsPrompt = true
     dialogIsConfirmation = false
     dialogInput = defaultText ?? ""
@@ -204,7 +204,7 @@ final class WorkspaceController: NSObject, WKNavigationDelegate, WKUIDelegate, W
 
   #if os(macOS)
   func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
-               initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
+               initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable ([URL]?) -> Void) {
     let panel = NSOpenPanel()
     panel.allowsMultipleSelection = parameters.allowsMultipleSelection
     panel.canChooseDirectories = parameters.allowsDirectories
@@ -220,7 +220,7 @@ final class WorkspaceController: NSObject, WKNavigationDelegate, WKUIDelegate, W
     loading = false
   }
   func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
-                suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
+                suggestedFilename: String, completionHandler: @escaping @MainActor @Sendable (URL?) -> Void) {
     let name = (suggestedFilename as NSString).lastPathComponent
     #if os(macOS)
       let panel = NSSavePanel()
