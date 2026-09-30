@@ -483,7 +483,8 @@ private struct ProfileEditorSheet: View {
         }
       }
     }
-    .frame(minWidth: 400, idealWidth: 520, minHeight: 480)
+    .adaptiveSheetSize(minWidth: 400, idealWidth: 520, minHeight: 480)
+    .sheetErrorNotice()
     .fileImporter(isPresented: $pickingImage, allowedContentTypes: [.image]) { result in
       guard case .success(let url) = result else { return }
       let field = imageField
@@ -600,7 +601,8 @@ private struct AccountSecuritySheet: View {
       .navigationTitle("Account")
       .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
     }
-    .frame(minWidth: 400, idealWidth: 520, minHeight: 530)
+    .adaptiveSheetSize(minWidth: 400, idealWidth: 520, minHeight: 530)
+    .sheetErrorNotice()
     .task {
       username = model.session?.user.username ?? ""
       email = model.session?.user.email ?? ""

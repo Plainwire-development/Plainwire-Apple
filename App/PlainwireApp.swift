@@ -14,13 +14,19 @@ struct PlainwireApp: App {
 
   var body: some Scene {
     #if os(macOS)
-      WindowGroup {
+      Window("Plainwire", id: "main") {
         rootView
           .frame(minWidth: 920, minHeight: 620)
       }
       .defaultSize(width: 1180, height: 760)
       .windowResizability(.contentMinSize)
       .commands {
+        CommandGroup(after: .newItem) {
+          Button("New Conversation") { model.showNewConversation = true }
+            .keyboardShortcut("n", modifiers: .command).disabled(model.sessionState != .ready)
+          Button("Search Messages") { model.showMessageSearch = true }
+            .keyboardShortcut("f", modifiers: [.command, .shift]).disabled(model.sessionState != .ready)
+        }
         CommandGroup(after: .appInfo) {
           Button("Refresh Plainwire") { Task { await model.refresh() } }
             .keyboardShortcut("r", modifiers: .command)
@@ -32,6 +38,8 @@ struct PlainwireApp: App {
             .keyboardShortcut("2", modifiers: .command)
           Button("Friends") { model.selectedSection = .friends }
             .keyboardShortcut("3", modifiers: .command)
+          Button("Activity") { model.selectedSection = .activity }.keyboardShortcut("4", modifiers: .command)
+          Button("Workspace") { model.openWorkspace() }.keyboardShortcut("5", modifiers: .command)
         }
       }
       Settings {
@@ -54,6 +62,8 @@ struct PlainwireApp: App {
       }
       .onOpenURL { url in Task { await model.handleDeepLink(url) } }
       .onChange(of: scenePhase) { _, phase in
+        model.applicationActive = phase == .active
+        if phase != .active { model.flushDrafts() }
         guard model.sessionState == .ready else { return }
         #if os(iOS)
           switch phase {
@@ -67,7 +77,7 @@ struct PlainwireApp: App {
             break
           }
         #else
-          if phase == .active { Task { await model.refresh() } }
+          if phase == .active { Task { await model.refresh(); await model.markRead(room: model.selectedRoom) } }
         #endif
       }
   }

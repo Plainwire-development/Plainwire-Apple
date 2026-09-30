@@ -42,9 +42,11 @@ Open `Plainwire.xcodeproj` in Xcode, select the `Plainwire` scheme, choose a sim
 
 ## What it does
 
-Plainwire supports direct messages, channels, friends, reactions, replies, file uploads, spoiler attachments, inline video, and live presence. You can view other members' profiles, edit your own profile and images, manage account credentials and sessions, and create, join, and customize servers. Server controls include appearance, your server profile, channels, categories, members, and invite links. Images are cached and resized for the screen. On Mac and iPad, conversations use a wider split view; iPhone uses tabs.
+This checkout is the 2.0.0 update. See [release notes](RELEASE_NOTES_2.0.0.md) for the changes and validation status; published downloads may still be an earlier version.
 
-The Workspace tab opens the complete Plainwire web client inside the app with your active session. It provides advanced features that do not yet have native screens, including developer tools and the web calling interface. Microphone and camera access are requested when those web features need them; live media also depends on WebKit and device permissions. Native call controls are not implemented. Notifications work while the app is running; background push on iPhone still needs APNs delivery.
+Plainwire supports direct and group messages, channels, friends, reactions, replies, forwarding, pins, message search, message requests, an activity inbox, file uploads, attachment previews, voice-note recording and playback, spoiler text and attachments, inline video, and live presence. Room drafts survive navigation and relaunch and are cleared when you sign out. You can view other members' profiles, edit your own profile and images, manage account credentials and sessions, and create, join, and customize servers. Group controls include names, members, moderators, and leaving or closing a conversation. Server controls include appearance, your server profile, channels, slow mode, categories, members, and invite links. Images are cached and resized for the screen. On Mac and iPad, conversations use a wider split view; iPhone uses tabs.
+
+The Workspace tab opens the complete Plainwire web client inside the app with your active session. It provides advanced features that do not yet have native screens, including developer tools and the web calling interface. Microphone and camera access are requested when those web features need them; live media also depends on WebKit and device permissions. The workspace is retained while browsing native sections. Live calling controls are provided by the web frontend. Notifications work while the app is running; background push on iPhone still needs APNs delivery.
 
 ## Development
 

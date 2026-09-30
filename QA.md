@@ -47,3 +47,23 @@ Run `./scripts/verify.sh` and build the Mac and iOS Simulator targets before a r
 - With the active room visible, confirm a new message does not produce an extra banner.
 - Disconnect the network, reconnect, and confirm messages and presence catch up without duplicates.
 - On iPhone, background and reopen the app. Confirm it reconnects and syncs.
+
+
+## 2.0 release checks
+
+- Use an account with an empty conversation and a blocked conversation. Confirm no decoding banner appears and the rest of sync loads.
+- Revoke an invite, clear activity, accept a message request, add a group member, and change a group role. Confirm successful acknowledgements do not report an unreadable response.
+- Enter an incorrect current password in account settings. Confirm it reports the credential error without signing out. Check an actually expired session separately.
+- Switch between Messages and Servers repeatedly, including while server details are loading. Confirm each section restores its own room and the final selection stays selected.
+- Draft different text in two rooms, restart, and confirm both restore. Start an upload in one, switch to the other, and confirm the resulting attachment belongs to the original draft. Fail a send, type new text while it is pending, and confirm both pieces survive.
+- Sign out and sign in as another account after opening rooms. Confirm histories reload, pagination works, old drafts disappear, and old attachment previews and loading flags do not return.
+- Disconnect one account while the other sends more than 50 messages. Reconnect and check ordering, edits, deletions, reactions, and unread counts. Receive several messages while at the bottom, then while scrolled up, then with the Mac window inactive.
+- Search messages, load another page, open a very old result, follow a reply, and return to latest. Confirm a context jump does not mark the whole conversation read or unexpectedly jump to new arrivals.
+- Forward to a direct message and to a channel in a server you have not opened yet. Pin/unpin with a moderator account and view pins from a member account.
+- Create a group, add a member, rename it, appoint/remove a moderator, remove a member, close a conversation, and leave a group. Exercise backend permission denials too.
+- View Activity, mark it read, clear it, and follow direct/channel and forum links. Check sidebar badges and notifications while browsing Friends or Settings.
+- Record, cancel, stop, and attach voice notes. Test denied microphone access, the two-minute limit, interruptions/backgrounding, and playback after scrolling out of view.
+- Open a protected PDF and image in Quick Look. Confirm downloads use the app session. Test names with spaces and Unicode, unavailable files, large files, and drag-and-drop uploads.
+- Check text spoilers, an image inside a spoiler sentence, isolated spoiler attachments, and attachment syntax inside inline/fenced code. Hidden attachments must not load before reveal.
+- Open a voice channel from native navigation, change sections during a live call, and return. Exercise web dialogs, a ban-reason prompt, uploads, downloads, reload errors, microphone/camera permissions, and external links. Check calls on real devices.
+- Resize the Mac window, switch appearance, enable Reduce Motion, and use VoiceOver and larger text. Check member-panel/composer animations, hover actions, keyboard commands, and all sheets on a narrow iPhone.

@@ -3,11 +3,15 @@ import SwiftUI
 struct ComposerBar: View {
   @Environment(AppModel.self) private var model
   @AppStorage(AppPreferenceKeys.sendTypingIndicators) private var sendTypingIndicators = true
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @AppStorage(AppPreferenceKeys.reduceInterfaceMotion) private var reduceInterfaceMotion = false
   @Binding var text: String
   let uploading: Bool
+  let sending: Bool
   let replyingTo: PWMessage?
   let onCancelReply: () -> Void
   let onAttach: () -> Void
+  let onRecordVoiceNote: () -> Void
   let onAttachSpoiler: () -> Void
   let onSend: () -> Void
 
@@ -83,6 +87,7 @@ struct ComposerBar: View {
           Menu {
             Button("Attach files", systemImage: "paperclip", action: onAttach)
             Button("Attach as spoiler", systemImage: "eye.slash", action: onAttachSpoiler)
+            Button("Record Voice Note", systemImage: "mic", action: onRecordVoiceNote)
           } label: {
             Group {
               if uploading {
@@ -105,21 +110,22 @@ struct ComposerBar: View {
             .padding(.horizontal, 3)
             .padding(.vertical, 7)
             .onChange(of: text) { _, _ in
-              if sendTypingIndicators { model.noteTyping() }
+              if sendTypingIndicators && model.canSendInSelectedRoom { model.noteTyping() }
             }
+            .disabled(!model.canSendInSelectedRoom)
             .onSubmit {
               if let first = mentionCandidates.first { insertMention(first.username) }
-              else { onSend() }
+              else if !sending && !uploading { onSend() }
             }
 
           Button(action: onSend) {
-            Image(systemName: "arrow.up")
+            Image(systemName: sending ? "ellipsis" : "arrow.up")
               .font(.system(size: 14, weight: .bold))
               .frame(width: 24, height: 24)
           }
           .adaptiveGlassButton(prominent: true)
           .controlSize(.small)
-          .disabled(trimmedText.isEmpty || uploading)
+          .disabled(trimmedText.isEmpty || uploading || sending || !model.canSendInSelectedRoom)
           .accessibilityLabel("Send message")
           .keyboardShortcut(.return, modifiers: [.command])
         }
@@ -127,6 +133,15 @@ struct ComposerBar: View {
         .padding(.vertical, 8)
       }
       .adaptiveGlass(cornerRadius: 21, interactive: true)
+    }
+    .animation(reduceMotion || reduceInterfaceMotion ? nil : .snappy(duration: 0.2), value: replyingTo?.id)
+    .animation(reduceMotion || reduceInterfaceMotion ? nil : .snappy(duration: 0.2), value: mentionCandidates.isEmpty)
+    .overlay(alignment: .bottomTrailing) {
+      if text.utf16.count > 4500 {
+        Text("\(text.utf16.count)/5000").font(.caption2.monospacedDigit())
+          .foregroundStyle(text.utf16.count > 5000 ? Color.red : Color.secondary)
+          .padding(.trailing, 16).offset(y: 14)
+      }
     }
     .frame(maxWidth: 900)
     .frame(maxWidth: .infinity)

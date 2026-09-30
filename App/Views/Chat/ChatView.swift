@@ -19,7 +19,23 @@ struct ChatView: View {
   let initialChannel: PWChannel?
   let initialServer: PWServer?
 
-  @State private var draft = ""
+  @State private var sending = false
+  @State private var voiceNoteRoom: AppModel.Room?
+  @State private var importerRoom: AppModel.Room?
+  @State private var forwardingMessage: PWMessage?
+  @State private var showingPins = false
+  @State private var showingConversationSettings = false
+  @State private var deletingMessage: PWMessage?
+  @State private var savingEdit = false
+
+  private var draft: String {
+    get { model.selectedRoom.flatMap { model.drafts[$0.identifier] } ?? "" }
+    nonmutating set { if let room = model.selectedRoom { model.drafts[room.identifier] = newValue } }
+  }
+  private var draftBinding: Binding<String> {
+    let key = model.selectedRoom?.identifier ?? ""
+    return Binding(get: { model.drafts[key] ?? "" }, set: { model.drafts[key] = $0 })
+  }
   @State private var showImporter = false
   @State private var attachAsSpoiler = false
   @State private var uploading = false
@@ -49,10 +65,11 @@ struct ChatView: View {
       AppBackdrop()
       HStack(spacing: 0) {
         chatColumn
-        if showsInlineMembers, let conversationID = groupConversationID {
+        if showsInlineMembers {
           Divider()
-          ConversationMembersSidebar(conversationID: conversationID)
+          roomMembers
             .frame(width: 246)
+            .transition(shouldAnimate ? .move(edge: .trailing).combined(with: .opacity) : .opacity)
         }
       }
     }
@@ -62,9 +79,25 @@ struct ChatView: View {
     .navigationTitle(model.selectedRoom?.title ?? "Conversation")
     .modifier(CompactToolbarTitleModifier())
     .toolbar {
+      ToolbarItem(placement: .primaryAction) {
+        Menu {
+          Button("Search Messages", systemImage: "magnifyingglass") { model.showMessageSearch = true }
+          if model.selectedRoom?.scope == "channel" {
+            Button("Pinned Messages", systemImage: "pin") { showingPins = true }
+          }
+          if groupConversationID != nil {
+            Button("Conversation Settings", systemImage: "gearshape") { showingConversationSettings = true }
+          }
+          if let room = model.selectedRoom {
+            Button("Calling Controls", systemImage: "phone") {
+              model.openWorkspace(fragment: "\(room.scope == "direct" ? "dm" : "channel")/\(room.roomID)")
+            }
+          }
+        } label: { Image(systemName: "ellipsis.circle") }
+      }
       if !showsRoomHeader {
         ToolbarItem(placement: .primaryAction) { ConnectionToolbarItem() }
-        if groupConversationID != nil {
+        if hasRoomMembers {
           ToolbarItem(placement: .primaryAction) {
             Button { showsMemberSheet = true } label: {
               Label("Members", systemImage: "person.2")
@@ -92,20 +125,53 @@ struct ChatView: View {
     ) { result in
       guard case .success(let urls) = result, !urls.isEmpty else { return }
       let spoiler = attachAsSpoiler
-      Task { await attach(urls, asSpoiler: spoiler) }
+      guard let room = importerRoom else { return }
+      Task { await attach(urls, asSpoiler: spoiler, room: room) }
+    }
+    .onAppear { if nearBottom { model.readingRoomID = model.selectedRoom?.identifier } }
+    .onDisappear { model.readingRoomID = nil }
+    .onChange(of: model.replyTarget?.id) { _, _ in
+      if let message = model.replyTarget, message.scope == model.selectedRoom?.scope, message.scopeId == model.selectedRoom?.roomID {
+        replyingTo = message
+        composerFocused = true
+      }
+      model.replyTarget = nil
+    }
+    .onChange(of: model.selectedRoom?.identifier) { _, _ in
+      replyingTo = nil
+      unreadWhileScrolled = 0
+      model.readingRoomID = model.selectedRoom?.identifier
+    }
+    .dropDestination(for: URL.self) { urls, _ in
+      guard !uploading, let room = model.selectedRoom else { return false }
+      Task { await attach(urls, asSpoiler: false, room: room) }
+      return true
+    }
+    .sheet(item: $voiceNoteRoom) { VoiceNoteSheet(room: $0) }
+    .sheet(item: $forwardingMessage) { ForwardMessageSheet(message: $0) }
+    .sheet(isPresented: $showingPins) {
+      if let room = model.selectedRoom, room.scope == "channel" { PinnedMessagesSheet(channelID: room.roomID) }
+    }
+    .sheet(isPresented: $showingConversationSettings) {
+      if let room = model.selectedRoom, let conversation = model.conversations.first(where: { $0.id == room.roomID }) {
+        ConversationSettingsSheet(conversation: conversation)
+      }
+    }
+    .confirmationDialog("Delete this message?", isPresented: Binding(
+      get: { deletingMessage != nil }, set: { if !$0 { deletingMessage = nil } }
+    ), titleVisibility: .visible) {
+      if let message = deletingMessage {
+        Button("Delete", role: .destructive) { Task { await model.deleteMessage(message) }; deletingMessage = nil }
+      }
     }
     .sheet(item: $editingMessage) { message in editSheet(message) }
     .sheet(isPresented: $showsMemberSheet) {
-      if let conversationID = groupConversationID {
-        NavigationStack {
-          ConversationMembersSidebar(conversationID: conversationID)
-            .navigationTitle("Members")
-            .toolbar {
-              ToolbarItem(placement: .confirmationAction) {
-                Button("Done") { showsMemberSheet = false }
-              }
-            }
-        }
+      NavigationStack {
+        roomMembers
+          .navigationTitle("Members")
+          .toolbar {
+            ToolbarItem(placement: .confirmationAction) { Button("Done") { showsMemberSheet = false } }
+          }
       }
     }
   }
@@ -114,15 +180,33 @@ struct ChatView: View {
     VStack(spacing: 0) {
         if showsRoomHeader {
           ChatRoomHeader(
-            showsMemberButton: groupConversationID != nil,
+            showsMemberButton: hasRoomMembers,
             membersVisible: showsInlineMembers,
             onToggleMembers: {
-              if canShowInlineMembers { showsMembers.toggle() }
+              if canShowInlineMembers { withAnimation(shouldAnimate ? .smooth(duration: 0.22) : nil) { showsMembers.toggle() } }
               else { showsMemberSheet = true }
             })
           Divider().opacity(0.32)
         }
 
+        if let room = model.selectedRoom, model.contextRooms.contains(room.identifier) {
+          HStack {
+            Label("Viewing message history", systemImage: "clock.arrow.circlepath").font(.caption)
+            Spacer()
+            Button("Back to Latest") { Task { await model.returnToLive() } }.font(.caption.weight(.semibold))
+          }.padding(12).background(.bar)
+        }
+        if let room = model.selectedRoom, room.scope == "direct",
+          let conversation = model.conversations.first(where: { $0.id == room.roomID }),
+          conversation.requestState == "pending" {
+          HStack(spacing: 12) {
+            Text("Message request").font(.subheadline.weight(.medium))
+            Spacer()
+            Button("Accept") { Task { _ = await model.conversationAction(conversation, action: .accept) } }
+              .buttonStyle(.borderedProminent)
+            Button("Decline", role: .destructive) { Task { _ = await model.conversationAction(conversation, action: .deny) } }
+          }.padding(12).background(.bar)
+        }
         messages
 
         if let typing = model.typingLabelForSelectedRoom() {
@@ -137,10 +221,11 @@ struct ChatView: View {
         }
 
         ComposerBar(
-          text: $draft, uploading: uploading, replyingTo: replyingTo,
+          text: draftBinding, uploading: uploading, sending: sending, replyingTo: replyingTo,
           onCancelReply: { replyingTo = nil },
-          onAttach: { attachAsSpoiler = false; showImporter = true },
-          onAttachSpoiler: { attachAsSpoiler = true; showImporter = true }, onSend: send
+          onAttach: { importerRoom = model.selectedRoom; attachAsSpoiler = false; showImporter = true },
+          onRecordVoiceNote: { voiceNoteRoom = model.selectedRoom },
+          onAttachSpoiler: { importerRoom = model.selectedRoom; attachAsSpoiler = true; showImporter = true }, onSend: send
         )
         .focused($composerFocused)
         .padding(.horizontal, 12)
@@ -148,6 +233,16 @@ struct ChatView: View {
         .padding(.bottom, 10)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  private var hasRoomMembers: Bool {
+    groupConversationID != nil || (model.selectedRoom?.scope == "channel" && model.selectedServerID != nil)
+  }
+  @ViewBuilder private var roomMembers: some View {
+    if let id = groupConversationID { ConversationMembersSidebar(conversationID: id) }
+    else if let serverID = model.selectedServerID, model.selectedRoom?.scope == "channel" {
+      ServerMembersSidebar(serverID: serverID)
+    }
   }
 
   private var groupConversationID: PlainwireID? {
@@ -167,7 +262,7 @@ struct ChatView: View {
   }
 
   private var canShowInlineMembers: Bool {
-    guard groupConversationID != nil, availableWidth >= 660 else { return false }
+    guard hasRoomMembers, availableWidth >= 660 else { return false }
     #if os(iOS)
       return horizontalSizeClass != .compact
     #else
@@ -198,22 +293,23 @@ struct ChatView: View {
         ScrollView {
           LazyVStack(alignment: .leading, spacing: 0) {
             let rows = model.messagePresentationsForSelectedRoom()
+            if let room = model.selectedRoom, model.canLoadOlder(room) {
+              Button {
+                let anchor = rows.first?.id
+                Task {
+                  await model.loadOlderMessages()
+                  guard model.selectedRoom?.identifier == room.identifier else { return }
+                  await Task.yield()
+                  if let anchor { proxy.scrollTo(anchor, anchor: .top) }
+                }
+              } label: {
+                HStack { Spacer(); Label("Load Earlier Messages", systemImage: "arrow.up"); Spacer() }
+                  .font(.caption).padding(.vertical, 12)
+              }.buttonStyle(.plain).disabled(model.isLoadingOlder(room))
+            }
             ForEach(rows) { presentation in
               MessageRow(presentation: presentation)
                 .id(presentation.id)
-                .onAppear {
-                  guard presentation.id == rows.first?.id else { return }
-                  let anchorID = presentation.id
-                  let previousCount = rows.count
-                  Task { @MainActor in
-                    await model.loadOlderMessages()
-                    guard model.messagePresentationsForSelectedRoom().count > previousCount else {
-                      return
-                    }
-                    await Task.yield()
-                    proxy.scrollTo(anchorID, anchor: .top)
-                  }
-                }
                 .contextMenu { messageMenu(presentation.message) }
             }
           }
@@ -223,6 +319,19 @@ struct ChatView: View {
           .padding(.bottom, 18)
           .frame(maxWidth: 980, alignment: .leading)
           .frame(maxWidth: .infinity)
+        }
+        .overlay {
+          if let room = model.selectedRoom, rowsAreEmpty {
+            if model.isLoadingRoom(room) { ProgressView("Loading messages…") }
+            else if !model.hasLoadedRoom(room) {
+              ContentUnavailableView { Label("Unable to load messages", systemImage: "wifi.exclamationmark") }
+              description: { Text("Try reconnecting to this conversation.") }
+              actions: { Button("Try Again") { Task { await model.loadSelectedRoom() } } }
+            } else {
+              ContentUnavailableView("Start the conversation", systemImage: "bubble.left.and.bubble.right",
+                description: Text("Send a message or drop a file here."))
+            }
+          }
         }
         .defaultScrollAnchor(.bottom)
         .modifier(ChatScrollKeyboardModifier())
@@ -234,14 +343,30 @@ struct ChatView: View {
           return scrollableHeight - viewportBottom < 150
         } action: { _, value in
           nearBottom = value
-          if value { unreadWhileScrolled = 0 }
+          model.readingRoomID = value ? model.selectedRoom?.identifier : nil
+          if value {
+            unreadWhileScrolled = 0
+            if let room = model.selectedRoom, !model.contextRooms.contains(room.identifier) { model.messageJumpID = nil }
+            Task { await model.markRead(room: model.selectedRoom) }
+          }
+        }
+        .task(id: model.messageJumpID) {
+          let target = model.messageJumpID
+          await Task.yield()
+          guard !Task.isCancelled, target == model.messageJumpID else { return }
+          if let target {
+            model.readingRoomID = nil
+            withAnimation(shouldAnimate ? .smooth(duration: 0.25) : nil) { proxy.scrollTo(target, anchor: .center) }
+          }
         }
         .onChange(of: model.selectedRoom?.identifier) { _, _ in
           nearBottom = true
           unreadWhileScrolled = 0
           Task { @MainActor in
             await Task.yield()
-            if let id = model.messagePresentationsForSelectedRoom().last?.id {
+            if let target = model.messageJumpID {
+              proxy.scrollTo(target, anchor: .center)
+            } else if let id = model.messagePresentationsForSelectedRoom().last?.id {
               proxy.scrollTo(id, anchor: .bottom)
             }
           }
@@ -251,8 +376,10 @@ struct ChatView: View {
             let last = model.messagePresentationsForSelectedRoom().last?.message
           else { return }
 
+          if model.messageJumpID != nil { return }
           if last.userId == model.session?.user.id || nearBottom {
             unreadWhileScrolled = 0
+            Task { await model.markRead(room: model.selectedRoom) }
             withAnimation(shouldAnimate ? .snappy(duration: 0.18) : nil) {
               proxy.scrollTo(new, anchor: .bottom)
             }
@@ -308,16 +435,21 @@ struct ChatView: View {
       Label("React", systemImage: "face.smiling")
     }
 
-    if message.userId == model.session?.user.id {
+    Button { forwardingMessage = message } label: { Label("Forward", systemImage: "arrowshape.turn.up.right") }
+    Button { copyMessage("https://plainwi.re/#\(message.scope == "direct" ? "dm" : "channel")/\(message.scopeId)") }
+      label: { Label("Copy Conversation Link", systemImage: "link") }
+    if message.scope == "channel", model.canPinMessages {
+      Button { Task { _ = await model.togglePin(message) } }
+        label: { Label(message.pinned ? "Unpin" : "Pin", systemImage: message.pinned ? "pin.slash" : "pin") }
+    }
+
+    if message.userId == model.session?.user.id || (message.scope == "channel" && model.canPinMessages) {
       Divider()
-      Button {
-        editText = message.body
-        editingMessage = message
-      } label: {
-        Label("Edit", systemImage: "pencil")
+      if message.userId == model.session?.user.id && message.forwardedFrom == nil && message.kind == "text" {
+        Button { editText = message.body; editingMessage = message } label: { Label("Edit", systemImage: "pencil") }
       }
       Button(role: .destructive) {
-        Task { await model.deleteMessage(message) }
+        deletingMessage = message
       } label: {
         Label("Delete", systemImage: "trash")
       }
@@ -355,41 +487,57 @@ struct ChatView: View {
         ToolbarItem(placement: .confirmationAction) {
           Button("Save") {
             Task {
-              await model.editMessage(message, body: editText)
-              editingMessage = nil
+              savingEdit = true
+              if await model.editMessage(message, body: editText) { editingMessage = nil }
+              savingEdit = false
             }
           }
-          .disabled(editText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+          .disabled(savingEdit || editText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
       }
     }
-    .frame(minWidth: 390, minHeight: 250)
+    .adaptiveSheetSize(minWidth: 390, minHeight: 250)
+    .sheetErrorNotice()
   }
 
+  private var rowsAreEmpty: Bool { model.messagePresentationsForSelectedRoom().isEmpty }
+
   private func send() {
-    let outgoing = draft
+    guard !sending, !uploading, let room = model.selectedRoom else { return }
+    let outgoing = model.drafts[room.identifier] ?? ""
     guard !outgoing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-    draft = ""
-    let replyID = replyingTo?.id
+    let reply = replyingTo
+    let accountID = model.session?.user.id
+    let csrf = model.session?.csrf
+    model.drafts[room.identifier] = ""
     replyingTo = nil
+    sending = true
     Task {
-      if !(await model.sendMessage(outgoing, replyTo: replyID)) {
-        draft = outgoing
+      let success = await model.sendMessage(outgoing, in: room, replyTo: reply?.id)
+      if !success, model.sessionState == .ready, model.session?.user.id == accountID, model.session?.csrf == csrf {
+        let newer = model.drafts[room.identifier] ?? ""
+        model.drafts[room.identifier] = newer.isEmpty ? outgoing : outgoing + "\n" + newer
+        if model.selectedRoom?.identifier == room.identifier { replyingTo = reply }
       }
+      sending = false
     }
   }
 
-  private func attach(_ urls: [URL], asSpoiler: Bool) async {
+  private func attach(_ urls: [URL], asSpoiler: Bool, room: AppModel.Room) async {
+    guard !uploading else { return }
     uploading = true
     defer { uploading = false }
     for url in urls {
-      if let upload = await model.upload(url) {
-        if !draft.isEmpty, !draft.hasSuffix(" ") { draft += " " }
+      if let upload = await model.upload(url), model.sessionState == .ready {
+        var text = model.drafts[room.identifier] ?? ""
+        if !text.isEmpty, !text.hasSuffix(" ") { text += " " }
         let markdown = model.attachmentMarkdown(for: upload)
-        draft += asSpoiler ? "||\(markdown)||" : markdown
+        text += asSpoiler ? "||\(markdown)||" : markdown
+        model.drafts[room.identifier] = text
       }
     }
   }
+
 }
 
 private struct ChatRoomHeader: View {
@@ -419,6 +567,14 @@ private struct ChatRoomHeader: View {
         }
       }
       Spacer(minLength: 12)
+      // Advanced room tools are also available from the compact toolbar.
+      Button { model.showMessageSearch = true } label: { Image(systemName: "magnifyingglass") }
+        .buttonStyle(.plain).help("Search messages").accessibilityLabel("Search messages")
+      if let room = model.selectedRoom {
+        Button { model.openWorkspace(fragment: "\(room.scope == "direct" ? "dm" : "channel")/\(room.roomID)") }
+          label: { Image(systemName: "phone") }
+          .buttonStyle(.plain).help("Open calling controls").accessibilityLabel("Open calling controls")
+      }
       if showsMemberButton {
         Button(action: onToggleMembers) {
           Image(systemName: "person.2")
@@ -465,8 +621,16 @@ private struct ConversationMembersSidebar: View {
       .padding(.vertical, 16)
       Divider()
       if members.isEmpty {
-        ProgressView("Loading members…")
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
+        if model.loadingConversationDetails.contains(conversationID) {
+          ProgressView("Loading members…")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+          ContentUnavailableView {
+            Label("Members unavailable", systemImage: "person.2.slash")
+          } actions: {
+            Button("Try Again") { Task { await model.loadConversationDetails(conversationID) } }
+          }
+        }
       } else {
         ScrollView {
           LazyVStack(spacing: 2) {

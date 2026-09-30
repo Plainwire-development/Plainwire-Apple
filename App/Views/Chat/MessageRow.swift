@@ -5,6 +5,7 @@ struct MessageRow: View {
   @Environment(AppModel.self) private var model
   @AppStorage(AppPreferenceKeys.compactMessages) private var compactMessages = false
   @State private var showingProfile = false
+  @State private var hovering = false
   let presentation: AppModel.MessagePresentation
 
   private var message: PWMessage { presentation.message }
@@ -39,7 +40,15 @@ struct MessageRow: View {
       VStack(alignment: .leading, spacing: compactMessages ? 3 : 5) {
         if presentation.startsGroup { messageHeader }
 
-        if let reply = message.replyTo { replyPreview(reply) }
+        if let reply = message.replyTo {
+          Button {
+            Task { await model.jumpToMessage(id: reply.id) }
+          } label: { replyPreview(reply) }.buttonStyle(.plain)
+        }
+        if let forwarded = message.forwardedFrom {
+          Label("Forwarded from \(forwarded.displayName)", systemImage: "arrowshape.turn.up.right.fill")
+            .font(.caption).foregroundStyle(.secondary)
+        }
 
         if message.deletedAt != nil {
           Label("Message deleted", systemImage: "trash")
@@ -47,17 +56,13 @@ struct MessageRow: View {
             .foregroundStyle(.tertiary)
         } else {
           if !presentation.displayBody.isEmpty {
-            Text(presentation.displayMarkdown)
-              .textSelection(.enabled)
-              .font(.body)
-              .lineSpacing(compactMessages ? 0.5 : 1.6)
-              .fixedSize(horizontal: false, vertical: true)
+            MessageBodyView(presentation: presentation, compact: compactMessages)
           }
 
           if !presentation.attachments.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-              ForEach(presentation.attachments) { attachment in
-                MessageAttachmentView(attachment: attachment)
+              ForEach(Array(presentation.attachments.enumerated()), id: \.offset) { item in
+                MessageAttachmentView(attachment: item.element)
               }
             }
             .padding(.top, presentation.displayBody.isEmpty ? 0 : 4)
@@ -65,8 +70,9 @@ struct MessageRow: View {
         }
 
         if message.deletedAt == nil {
-          ReactionBar(message: message)
-            .padding(.top, message.reactions.isEmpty ? 1 : 3)
+          if !message.reactions.isEmpty {
+            ReactionBar(message: message).padding(.top, 3)
+          }
         }
       }
       .frame(maxWidth: 720, alignment: .leading)
@@ -75,10 +81,31 @@ struct MessageRow: View {
       }
       .padding(.horizontal, 6)
       .padding(.vertical, presentation.startsGroup ? (compactMessages ? 5 : 8) : 2)
-      .background(isMentioned ? Color.accentColor.opacity(0.09) : Color.clear,
+      .background((isMentioned || model.messageJumpID == message.id) ? Color.accentColor.opacity(0.09) : Color.clear,
                   in: RoundedRectangle(cornerRadius: 10))
       .contentShape(Rectangle())
       .modifier(MessageHoverSurfaceModifier())
+      .onHover { hovering = $0 }
+      .overlay(alignment: .topTrailing) {
+        #if os(macOS)
+        if hovering && message.deletedAt == nil {
+          HStack(spacing: 8) {
+            Button { Task { await model.toggleReaction("👍", on: message) } } label: { Image(systemName: "hand.thumbsup") }
+              .help("React with thumbs up")
+            Button { model.replyTarget = message } label: { Image(systemName: "arrowshape.turn.up.left") }
+              .help("Reply")
+            if message.scope == "channel", model.canPinMessages {
+              Button { Task { _ = await model.togglePin(message) } } label: { Image(systemName: message.pinned ? "pin.slash" : "pin") }
+                .help(message.pinned ? "Unpin" : "Pin")
+            }
+          }
+          .font(.caption).buttonStyle(.plain).padding(8)
+          .background(.regularMaterial, in: Capsule())
+          .overlay(Capsule().strokeBorder(.primary.opacity(0.08), lineWidth: 0.5))
+          .padding(.trailing, 6)
+        }
+        #endif
+      }
     }
     .sheet(isPresented: $showingProfile) { PersonProfileSheet(userID: message.userId) }
   }
@@ -100,7 +127,14 @@ struct MessageRow: View {
         .buttonStyle(.plain)
         .font(compactMessages ? .caption.weight(.semibold) : .subheadline.weight(.semibold))
         .lineLimit(1)
+        .foregroundStyle(Color(plainwireHex: message.roleColor) ?? .primary)
         .accessibilityHint("View profile")
+      if message.isBot {
+        Text("APP").font(.system(size: 9, weight: .bold)).foregroundStyle(Color.accentColor)
+          .padding(.horizontal, 4).padding(.vertical, 2)
+          .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
+      }
+      if message.pinned { Image(systemName: "pin.fill").font(.caption2).foregroundStyle(.secondary) }
       Text(presentation.timestampText)
         .font(.caption2)
         .foregroundStyle(.tertiary)
@@ -119,7 +153,7 @@ struct MessageRow: View {
         Text(reply.displayName)
           .font(.caption.weight(.semibold))
           .foregroundStyle(.secondary)
-        Text(reply.body)
+        Text(PWMessageText.redactingSpoilers(reply.body))
           .font(.caption)
           .foregroundStyle(.secondary)
           .lineLimit(1)
@@ -127,7 +161,7 @@ struct MessageRow: View {
     }
     .padding(.vertical, 2)
     .accessibilityElement(children: .combine)
-    .accessibilityLabel("Reply to \(reply.displayName): \(reply.body)")
+    .accessibilityLabel("Reply to \(reply.displayName): \(PWMessageText.redactingSpoilers(reply.body))")
   }
 }
 
@@ -186,6 +220,8 @@ private struct ReactionBar: View {
 
 private struct MessageAttachmentView: View {
   @Environment(AppModel.self) private var model
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @AppStorage(AppPreferenceKeys.reduceInterfaceMotion) private var reduceInterfaceMotion = false
   let attachment: AppModel.MessageAttachment
   @State private var revealed = false
 
@@ -193,7 +229,7 @@ private struct MessageAttachmentView: View {
     VStack(alignment: .leading, spacing: 5) {
       if attachment.isSpoiler && !revealed {
         Button {
-          withAnimation(.easeInOut(duration: 0.2)) { revealed = true }
+          withAnimation(reduceMotion || reduceInterfaceMotion ? nil : .easeInOut(duration: 0.2)) { revealed = true }
         } label: {
           HStack(spacing: 12) {
             Image(systemName: "eye.slash.fill")
@@ -227,6 +263,7 @@ private struct MessageAttachmentView: View {
         }
       }
     }
+    .onChange(of: attachment) { _, _ in revealed = false }
   }
 
   @ViewBuilder private var attachmentContent: some View {
@@ -236,9 +273,7 @@ private struct MessageAttachmentView: View {
     case .video:
       VideoAttachment(name: attachment.name, url: model.mediaURL(attachment.url))
     case .voice:
-      AttachmentLinkCard(
-        name: attachment.name, url: model.mediaURL(attachment.url), symbol: "waveform",
-        subtitle: "Voice note")
+      AudioAttachment(name: attachment.name, url: model.mediaURL(attachment.url))
     case .file:
       AttachmentLinkCard(
         name: attachment.name, url: model.mediaURL(attachment.url), symbol: "doc.fill",
@@ -248,6 +283,7 @@ private struct MessageAttachmentView: View {
 }
 
 private struct AttachmentImage: View {
+  @Environment(AppModel.self) private var model
   let name: String
   let url: URL?
 
@@ -268,6 +304,10 @@ private struct AttachmentImage: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                   .stroke(.primary.opacity(0.07), lineWidth: 0.5)
               }
+              .onTapGesture { Task { await model.previewAttachment(url: url, name: name) } }
+              .accessibilityAddTraits(.isButton)
+              .accessibilityAction { Task { await model.previewAttachment(url: url, name: name) } }
+              .accessibilityHint("Preview full image")
               .accessibilityLabel(name.isEmpty ? "Image attachment" : name)
           case .failure:
             attachmentPlaceholder(progress: false)
@@ -318,7 +358,8 @@ private struct VideoAttachment: View {
       } else {
         Button {
           guard let url else { return }
-          let next = AVPlayer(url: url)
+          let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPCookiesKey": HTTPCookieStorage.shared.cookies(for: url) ?? []])
+          let next = AVPlayer(playerItem: AVPlayerItem(asset: asset))
           next.automaticallyWaitsToMinimizeStalling = false
           player = next
           next.play()
@@ -357,6 +398,7 @@ private struct VideoAttachment: View {
 }
 
 private struct AttachmentLinkCard: View {
+  @Environment(AppModel.self) private var model
   let name: String
   let url: URL?
   let symbol: String
@@ -365,7 +407,8 @@ private struct AttachmentLinkCard: View {
   var body: some View {
     Group {
       if let url {
-        Link(destination: url) { cardContent }
+        Button { Task { await model.previewAttachment(url: url, name: name) } } label: { cardContent }
+          .disabled(model.downloadingAttachment)
           .buttonStyle(.plain)
       } else {
         cardContent.opacity(0.7)
@@ -461,5 +504,122 @@ private struct ReactionFlowLayout: Layout {
       x += size.width + spacing
       rowHeight = max(rowHeight, size.height)
     }
+  }
+}
+
+private struct MessageBodyView: View {
+  let presentation: AppModel.MessagePresentation
+  let compact: Bool
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @AppStorage(AppPreferenceKeys.reduceInterfaceMotion) private var reduceInterfaceMotion = false
+  @State private var revealed = false
+  private var hasSpoilers: Bool { presentation.displayBody.contains("||") }
+  private var blocks: [AppModel.MessageTextBlock] {
+    hasSpoilers && !revealed ? presentation.redactedTextBlocks : presentation.textBlocks
+  }
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      ForEach(blocks) { value in
+        switch value.block.kind {
+        case .markdown:
+          Text(value.markdown).textSelection(.enabled).font(.body)
+            .lineSpacing(compact ? 0.5 : 1.6).fixedSize(horizontal: false, vertical: true)
+        case .code(let language):
+          VStack(alignment: .leading, spacing: 0) {
+            HStack {
+              Text(language.isEmpty ? "Code" : language).font(.caption2.weight(.medium)).foregroundStyle(.secondary)
+              Spacer()
+              Button {
+                #if os(macOS)
+                  NSPasteboard.general.clearContents()
+                  NSPasteboard.general.setString(value.block.text, forType: .string)
+                #else
+                  UIPasteboard.general.string = value.block.text
+                #endif
+              } label: { Image(systemName: "doc.on.doc").font(.caption2) }
+                .buttonStyle(.plain).help("Copy code").accessibilityLabel("Copy code")
+            }.padding(.horizontal, 12).padding(.vertical, 8)
+            Divider().opacity(0.4)
+            ScrollView(.horizontal) {
+              Text(value.block.text).font(.system(.callout, design: .monospaced)).textSelection(.enabled)
+                .fixedSize(horizontal: true, vertical: false).padding(12)
+            }
+          }.background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.primary.opacity(0.08), lineWidth: 0.5))
+        }
+      }
+      if hasSpoilers {
+        Button {
+          withAnimation(reduceMotion || reduceInterfaceMotion ? nil : .easeInOut(duration: 0.15)) { revealed.toggle() }
+        } label: { Label(revealed ? "Hide spoilers" : "Reveal spoilers", systemImage: revealed ? "eye.slash" : "eye") }
+          .font(.caption).buttonStyle(.plain).foregroundStyle(.secondary)
+      }
+    }
+    .onChange(of: presentation.message.body) { _, _ in revealed = false }
+  }
+}
+
+private struct AudioAttachment: View {
+  let name: String
+  let url: URL?
+  @State private var player: AVPlayer?
+  @State private var duration: Double = 0
+  @State private var loading = false
+  @State private var error: String?
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+        HStack(spacing: 12) {
+          Button {
+            if let player {
+              if player.rate > 0 { player.pause() }
+              else {
+                if duration > 0 && player.currentTime().seconds >= duration - 0.1 { player.seek(to: .zero) }
+                player.play()
+              }
+            } else { Task { await play() } }
+          } label: {
+            Image(systemName: player?.rate ?? 0 > 0 ? "pause.fill" : "play.fill")
+              .font(.headline).frame(width: 36, height: 36)
+              .foregroundStyle(Color.accentColor)
+              .background(Color.accentColor.opacity(0.12), in: Circle())
+          }.buttonStyle(.plain).disabled(url == nil || loading).accessibilityLabel("Play or pause voice note")
+          VStack(alignment: .leading, spacing: 6) {
+            Text(name.isEmpty ? "Voice note" : name).font(.subheadline.weight(.medium)).lineLimit(1)
+            ProgressView(value: progress).tint(.accentColor)
+            Text(loading ? "Loading…" : "\(timestamp(player?.currentTime().seconds ?? 0)) / \(timestamp(duration))")
+              .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+          }
+        }
+      }
+      if let error { Text(error).font(.caption).foregroundStyle(.secondary) }
+    }
+    .padding(12).frame(maxWidth: 420)
+    .background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 16))
+    .onDisappear { player?.pause() }
+  }
+  private var progress: Double {
+    guard duration.isFinite, duration > 0, let time = player?.currentTime().seconds, time.isFinite else { return 0 }
+    return min(1, max(0, time / duration))
+  }
+  private func timestamp(_ value: Double) -> String {
+    guard value.isFinite, value >= 0 else { return "0:00" }
+    let seconds = Int(min(value, 86400))
+    return String(format: "%d:%02d", seconds / 60, seconds % 60)
+  }
+  private func play() async {
+    guard let url else { return }
+    loading = true
+    error = nil
+    defer { loading = false }
+    let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPCookiesKey": HTTPCookieStorage.shared.cookies(for: url) ?? []])
+    do {
+      let length = try await asset.load(.duration).seconds
+      guard !Task.isCancelled else { return }
+      duration = length.isFinite ? length : 0
+      let next = AVPlayer(playerItem: AVPlayerItem(asset: asset))
+      player = next
+      next.play()
+    } catch { self.error = "Unable to play this voice note. Try again." }
   }
 }

@@ -161,9 +161,9 @@ public actor PlainwireAPIClient {
     ]
     let _: JSONValue = try await request(method: "POST", path: "server/\(serverID)/channels", body: body)
   }
-  public func updateChannel(id: PlainwireID, name: String, topic: String) async throws {
+  public func updateChannel(id: PlainwireID, name: String, topic: String, slowmodeSeconds: Int) async throws {
     let _: JSONValue = try await request(method: "POST", path: "channel/\(id)/settings", body: [
-      "name": name, "topic": topic,
+      "name": JSONValue.string(name), "topic": .string(topic), "slowmode_seconds": .int(Int64(slowmodeSeconds)),
     ])
   }
   public func invites(serverID: PlainwireID) async throws -> [PWInvite] {
@@ -198,6 +198,55 @@ public actor PlainwireAPIClient {
       body: ["nickname": nickname, "bio": bio, "avatar_url": avatarURL])
   }
   public func rtcConfiguration() async throws -> PWRTCConfiguration { try await get("rtc-config") }
+
+  public func notifications() async throws -> [PWNotification] { try await get("notifications") }
+  public func markNotificationsSeen() async throws {
+    let _: JSONValue = try await request(method: "POST", path: "notifications/seen", body: [String: String]())
+  }
+  public func clearNotifications() async throws {
+    let _: JSONValue = try await request(method: "POST", path: "notifications/clear", body: [String: String]())
+  }
+  public func searchMessages(_ query: String, before: PlainwireID? = nil) async throws -> PWMessageSearch {
+    var items = [URLQueryItem(name: "q", value: query), URLQueryItem(name: "limit", value: "30")]
+    if let before { items.append(URLQueryItem(name: "before", value: String(before))) }
+    return try await get("search/messages", query: items)
+  }
+  public func messageContext(id: PlainwireID) async throws -> PWMessageContext {
+    try await get("message/\(id)/context")
+  }
+  public func pinnedMessages(channelID: PlainwireID) async throws -> [PWMessage] {
+    try await get("channel/\(channelID)/pins")
+  }
+  public func setPinned(messageID: PlainwireID, pinned: Bool) async throws {
+    let _: JSONValue = try await request(method: "POST", path: "message/\(messageID)/pin", body: ["pinned": pinned])
+  }
+  public func forwardMessage(id: PlainwireID, scope: String, targetID: PlainwireID) async throws -> PWMessage {
+    try await request(method: "POST", path: "forward_message/\(id)", body: [
+      "target_scope": JSONValue.string(scope), "target_id": .int(targetID),
+    ])
+  }
+  public func updateConversation(id: PlainwireID, fields: [String: JSONValue]) async throws {
+    let _: JSONValue = try await request(method: "POST", path: "conversation/\(id)", body: fields)
+  }
+  public func addConversationMembers(id: PlainwireID, userIDs: [PlainwireID]) async throws {
+    let _: JSONValue = try await request(method: "POST", path: "conversation/\(id)/members", body: ["user_ids": userIDs])
+  }
+  public func setConversationRole(id: PlainwireID, userID: PlainwireID, moderator: Bool) async throws {
+    let _: JSONValue = try await request(method: "POST", path: "conversation/\(id)/member/\(userID)/role",
+      body: ["role": moderator ? "moderator" : "member"])
+  }
+  public func removeConversationMember(id: PlainwireID, userID: PlainwireID) async throws {
+    let _: JSONValue = try await request(method: "POST", path: "conversation/\(id)/member/\(userID)/kick", body: [String: String]())
+  }
+  public func conversationAction(id: PlainwireID, action: ConversationAction) async throws {
+    let _: JSONValue = try await request(method: "POST", path: "conversation/\(id)/\(action.rawValue)", body: [String: String]())
+  }
+  public enum ConversationAction: String, Sendable {
+    case accept = "request/accept", deny = "request/deny", leave, close
+  }
+  public func blockUser(id: PlainwireID, blocked: Bool) async throws {
+    let _: JSONValue = try await request(method: "POST", path: "friends/\(blocked ? "block" : "unblock")", body: UserIDRequest(userId: id))
+  }
 
   public func messages(
     scope: String, id: PlainwireID, before: PlainwireID? = nil, after: PlainwireID? = nil
@@ -298,6 +347,24 @@ public actor PlainwireAPIClient {
 
   public func resolveMediaURL(_ value: String) -> URL? { configuration.mediaURL(value) }
 
+  public func download(_ value: String) async throws -> URL {
+    guard let url = configuration.mediaURL(value) else { throw PlainwireAPIError.invalidURL }
+    let (temporary, response) = try await session.download(from: url)
+    let http = try validatedHTTP(response)
+    guard (200..<300).contains(http.statusCode) else {
+      try? FileManager.default.removeItem(at: temporary)
+      if http.statusCode == 401 { throw PlainwireAPIError.notAuthenticated }
+      throw PlainwireAPIError.server(status: http.statusCode,
+        code: HTTPURLResponse.localizedString(forStatusCode: http.statusCode), message: nil)
+    }
+    let size = (try? FileManager.default.attributesOfItem(atPath: temporary.path)[.size] as? NSNumber)?.int64Value ?? 0
+    guard size <= Self.defaultUploadLimit else {
+      try? FileManager.default.removeItem(at: temporary)
+      throw PlainwireAPIError.uploadTooLarge(size)
+    }
+    return temporary
+  }
+
   private static func percentEncodedFilename(_ value: String) -> String {
     var allowed = CharacterSet.alphanumerics
     allowed.insert(charactersIn: "-._~")
@@ -333,8 +400,10 @@ public actor PlainwireAPIClient {
   private func requestAllowingEmpty<T: Decodable & Sendable, Body: Encodable & Sendable>(
     method: String, path: String, query: [URLQueryItem] = [], body: Body?, requiresCSRF: Bool = true
   ) async throws -> T? {
-    var request = URLRequest(url: try configuration.apiURL(path, query: query))
+    var request = URLRequest(
+      url: try configuration.apiURL(path, query: query), cachePolicy: .reloadIgnoringLocalCacheData)
     request.httpMethod = method
+    if path == "logout" { request.timeoutInterval = 10 }
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     if method != "GET", requiresCSRF {
       guard let csrfToken else { throw PlainwireAPIError.notAuthenticated }
@@ -348,9 +417,21 @@ public actor PlainwireAPIClient {
     do {
       let (data, response) = try await session.data(for: request)
       let http = try validatedHTTP(response)
-      if http.statusCode == 401 { throw PlainwireAPIError.notAuthenticated }
+      if http.statusCode == 401 {
+        let error = decodeServerError(data: data, status: http.statusCode)
+        // Incorrect credentials also use 401. Only expired sessions sign the app out.
+        if case .server(_, let code, _) = error,
+          ["unauthorized", "not_authenticated", "session_expired", "auth_required"].contains(code)
+        { throw PlainwireAPIError.notAuthenticated }
+        if path == "me" { throw PlainwireAPIError.notAuthenticated }
+        throw error
+      }
       if (200..<300).contains(http.statusCode) {
-        if data.isEmpty { return nil }
+        if data.isEmpty {
+          if T.self == JSONValue.self { return JSONValue.object(["ok": .bool(true)]) as? T }
+          if T.self == EmptyPayload.self { return EmptyPayload() as? T }
+          return nil
+        }
         if T.self == EmptyPayload.self,
           let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           raw["ok"] as? Bool == true, raw["data"] == nil
@@ -363,7 +444,15 @@ public actor PlainwireAPIClient {
     } catch let error as PlainwireAPIError {
       throw error
     } catch let error as DecodingError {
-      throw PlainwireAPIError.decoding(String(describing: error))
+      let context: DecodingError.Context
+      var missingKey: String?
+      switch error {
+      case .keyNotFound(let key, let value): context = value; missingKey = key.stringValue
+      case .typeMismatch(_, let value), .valueNotFound(_, let value), .dataCorrupted(let value): context = value
+      @unknown default: throw PlainwireAPIError.decoding(path)
+      }
+      let field = (context.codingPath.map(\.stringValue) + [missingKey].compactMap { $0 }).joined(separator: ".")
+      throw PlainwireAPIError.decoding(field.isEmpty ? path : "\(path): \(field)")
     } catch {
       throw PlainwireAPIError.transport(error.localizedDescription)
     }
@@ -390,7 +479,11 @@ public actor PlainwireAPIClient {
       throw PlainwireAPIError.server(
         status: http.statusCode, code: envelope.error ?? "unknown_error", message: envelope.message)
     }
-    return envelope.data
+    if let value = envelope.data { return value }
+    // Command endpoints legitimately return {"ok": true} with no data.
+    if T.self == JSONValue.self { return JSONValue.object(["ok": .bool(true)]) as? T }
+    if T.self == EmptyPayload.self { return EmptyPayload() as? T }
+    return nil
   }
 
   private func validatedHTTP(_ response: URLResponse) throws -> HTTPURLResponse {

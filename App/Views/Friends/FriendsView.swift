@@ -7,6 +7,7 @@ struct FriendsView: View {
   @State private var searching = false
 
   private var pending: [PWFriend] { model.friends.filter { $0.status == "pending" } }
+  private var blocked: [PWFriend] { model.friends.filter { $0.status == "blocked" && $0.blockedByMe } }
   private var accepted: [PWFriend] { model.friends.filter { $0.status == "accepted" } }
   private var hasQuery: Bool {
     !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -46,6 +47,18 @@ struct FriendsView: View {
           }
         }
 
+        if !blocked.isEmpty {
+          Section("Blocked") {
+            ForEach(blocked, id: \.user.id) { friend in
+              HStack {
+                Text(friend.user.displayName)
+                Spacer()
+                Button("Unblock") { Task { _ = await model.blockUser(friend.user, blocked: false) } }
+                  .buttonStyle(.bordered)
+              }
+            }
+          }
+        }
         if hasQuery {
           Section("People") {
             if searching {
@@ -69,9 +82,11 @@ struct FriendsView: View {
     }
     .navigationTitle("Friends")
     .searchable(text: $search, prompt: "Find people")
-    .onSubmit(of: .search) { Task { await performSearch() } }
-    .onChange(of: search) { _, newValue in
-      if newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { results = [] }
+    .task(id: search) {
+      results = []
+      guard search.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else { searching = false; return }
+      searching = true
+      do { try await Task.sleep(for: .milliseconds(350)); await performSearch() } catch {}
     }
     .refreshable { await model.refresh() }
   }
@@ -83,8 +98,9 @@ struct FriendsView: View {
       return
     }
     searching = true
-    defer { searching = false }
     let found = await model.searchUsers(q)
+    guard !Task.isCancelled, q == search.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+    searching = false
     results = found.filter { $0.id != model.session?.user.id }
   }
 
@@ -146,6 +162,8 @@ private struct FriendsEmptyRow: View {
 private struct FriendRow: View {
   @Environment(AppModel.self) private var model
   @State private var showingProfile = false
+  @State private var confirmingRemoval = false
+  @State private var confirmingBlock = false
   let friend: PWFriend
   let requestActions: Bool
 
@@ -198,6 +216,16 @@ private struct FriendRow: View {
       }
     }
     .padding(.vertical, 4)
+    .contextMenu {
+      Button(friend.status == "pending" ? "Cancel Request" : "Remove Friend", role: .destructive) { confirmingRemoval = true }
+      Button("Block", role: .destructive) { confirmingBlock = true }
+    }
+    .confirmationDialog("Remove this friendship or request?", isPresented: $confirmingRemoval, titleVisibility: .visible) {
+      Button("Remove", role: .destructive) { Task { await model.removeFriend(friend.user) } }
+    }
+    .confirmationDialog("Block \(friend.user.displayName)?", isPresented: $confirmingBlock, titleVisibility: .visible) {
+      Button("Block", role: .destructive) { Task { _ = await model.blockUser(friend.user, blocked: true) } }
+    }
     .sheet(isPresented: $showingProfile) { PersonProfileSheet(userID: friend.user.id) }
   }
 
@@ -216,6 +244,7 @@ struct PersonProfileSheet: View {
   @Environment(\.dismiss) private var dismiss
   let userID: PlainwireID
   @State private var profile: PWProfile?
+  @State private var loading = true
 
   var body: some View {
     NavigationStack {
@@ -252,16 +281,27 @@ struct PersonProfileSheet: View {
           }
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(24)
-        } else {
+        } else if loading {
           ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+          ContentUnavailableView { Label("Profile unavailable", systemImage: "person.crop.circle.badge.exclamationmark") }
+          description: { Text("The profile could not be loaded.") }
+          actions: { Button("Try Again") { Task { await load() } } }
         }
       }
       .navigationTitle("Profile")
       .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
     }
-    .frame(minWidth: 360, idealWidth: 480, minHeight: 400)
-    .task(id: userID) { profile = await model.profile(id: userID) }
+    .adaptiveSheetSize(minWidth: 360, idealWidth: 480, minHeight: 400)
+    .sheetErrorNotice()
+    .task(id: userID) { await load() }
   }
+  private func load() async {
+    loading = true
+    profile = await model.profile(id: userID)
+    loading = false
+  }
+
 }
 
 private struct FriendsListStyleModifier: ViewModifier {

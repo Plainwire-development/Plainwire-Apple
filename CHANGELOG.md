@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.0
+
+- Fixed null response fields, command acknowledgements without data, password errors, and unsafe numeric ID conversion.
+- Added native message search and context navigation, forwarding, pins, activity, group creation and moderation, message requests, voice notes, attachment previews, and channel slow mode.
+- Improved room drafts, reconnect catch-up, unread acknowledgements, session cleanup, and navigation between messages and servers.
+- Added spoiler-safe text and code rendering, member panels, hover actions, adaptive sheets, and background thumbnail decoding.
+- Retained the authenticated web workspace across sections and added navigation, dialogs, download handling, and failure recovery.
+- See [2.0 release notes](RELEASE_NOTES_2.0.0.md) for coverage and remaining Apple-platform validation.
+
 ## 1.2.1
 
 - Reorganized server settings into focused pages with a wider Mac layout.

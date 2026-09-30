@@ -4,9 +4,17 @@ struct ConversationListView: View {
   @Environment(AppModel.self) private var model
   let compactNavigation: Bool
   @State private var search = ""
+  @State private var filter: ConversationFilter = .all
+  @State private var leaving: PWConversation?
+  private enum ConversationFilter: String, CaseIterable { case all = "All", unread = "Unread", requests = "Requests" }
 
   var body: some View {
     List {
+      Section {
+        Picker("Show", selection: $filter) {
+          ForEach(ConversationFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+        }.pickerStyle(.segmented).listRowSeparator(.hidden)
+      }
       if let warning = model.syncWarning {
         Section {
           HStack(alignment: .top, spacing: 9) {
@@ -20,6 +28,17 @@ struct ConversationListView: View {
       Section {
         ForEach(filteredConversations) { conversation in
           conversationDestination(conversation)
+            .contextMenu {
+              Button("Mark Read", systemImage: "checkmark") {
+                Task { await model.readConversation(conversation) }
+              }
+              Button("Close Conversation", systemImage: "archivebox") {
+                Task { _ = await model.conversationAction(conversation, action: .close) }
+              }
+              if conversation.memberCount > 2 {
+                Button("Leave Conversation", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { leaving = conversation }
+              }
+            }
         }
       }
     }
@@ -34,14 +53,38 @@ struct ConversationListView: View {
       }
     }
     .navigationTitle("Messages")
-    .searchable(text: $search, prompt: "Search messages")
+    .searchable(text: $search, prompt: "Filter conversations")
+    .toolbar {
+      ToolbarItem(placement: .primaryAction) {
+        Button { model.showNewConversation = true } label: { Image(systemName: "square.and.pencil") }
+          .help("New conversation").accessibilityLabel("New conversation")
+      }
+      ToolbarItem(placement: .primaryAction) {
+        Button { model.showMessageSearch = true } label: { Image(systemName: "magnifyingglass") }
+          .help("Search all messages").accessibilityLabel("Search all messages")
+      }
+    }
+    .confirmationDialog("Leave this conversation?", isPresented: Binding(
+      get: { leaving != nil }, set: { if !$0 { leaving = nil } }
+    ), titleVisibility: .visible) {
+      if let conversation = leaving {
+        Button("Leave", role: .destructive) { Task { _ = await model.conversationAction(conversation, action: .leave) }; leaving = nil }
+      }
+    }
     .refreshable { await model.refresh() }
   }
 
   private var filteredConversations: [PWConversation] {
     let query = search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    guard !query.isEmpty else { return model.conversations }
-    return model.conversations.filter { conversation in
+    let source = model.conversations.filter {
+      switch filter {
+      case .all: $0.requestState != "pending"
+      case .unread: $0.unread > 0 && $0.requestState != "pending"
+      case .requests: $0.requestState == "pending"
+      }
+    }
+    guard !query.isEmpty else { return source }
+    return source.filter { conversation in
       model.conversationDisplayName(conversation).lowercased().contains(query)
         || conversation.peerUsername.lowercased().contains(query)
         || conversation.lastBody.lowercased().contains(query)
@@ -106,6 +149,10 @@ private struct ConversationRow: View {
             .foregroundStyle(conversation.unread > 0 ? .primary : .secondary)
             .lineLimit(1)
           Spacer(minLength: 4)
+          if model.drafts["direct:\(conversation.id)"]?.isEmpty == false {
+            Text("Draft").font(.caption2.weight(.medium)).foregroundStyle(.orange)
+          }
+          if conversation.muted { Image(systemName: "bell.slash").font(.caption2).foregroundStyle(.secondary) }
           if conversation.unread > 0 {
             Text("\(conversation.unread)")
               .font(.caption2.bold())

@@ -1,9 +1,11 @@
 import SwiftUI
-import WebKit
+import QuickLook
 
 struct AppRootView: View {
   @Environment(AppModel.self) private var model
   @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @AppStorage(AppPreferenceKeys.reduceInterfaceMotion) private var reduceInterfaceMotion = false
 
   var body: some View {
     ZStack(alignment: .top) {
@@ -12,12 +14,17 @@ struct AppRootView: View {
         case .booting: LaunchView()
         case .signedOut: SignInView()
         case .ready: authenticatedRoot
+        case .unavailable: ConnectionRecoveryView()
         }
       }
 
+      if model.downloadingAttachment {
+        HStack(spacing: 10) { ProgressView().controlSize(.small); Text("Downloading attachment…").font(.caption) }
+          .padding(12).background(.regularMaterial, in: Capsule()).padding(.top, 10).zIndex(99)
+      }
       if let message = model.errorMessage {
         AppNoticeBanner(message: friendlyError(message)) {
-          withAnimation(.snappy(duration: 0.2)) { model.errorMessage = nil }
+          withAnimation(reduceMotion || reduceInterfaceMotion ? nil : .snappy(duration: 0.2)) { model.errorMessage = nil }
         }
         .padding(.horizontal, 14)
         .padding(.top, 10)
@@ -25,9 +32,25 @@ struct AppRootView: View {
         .zIndex(100)
       }
     }
-    .animation(.snappy(duration: 0.22), value: model.errorMessage != nil)
+    .animation(reduceMotion || reduceInterfaceMotion ? nil : .snappy(duration: 0.22), value: model.errorMessage != nil)
+    .quickLookPreview(Binding(get: { model.previewFileURL }, set: { model.previewFileURL = $0 }))
+    .environment(\.openURL, OpenURLAction { url in
+      if url.scheme == "plainwire" || (url.host == PlainwireConfiguration().baseURL.host && url.fragment != nil) {
+        Task { await model.handleDeepLink(url) }
+        return .handled
+      }
+      guard ["https", "http", "mailto"].contains(url.scheme?.lowercased() ?? "") else { return .discarded }
+      return .systemAction
+    })
     .preferredColorScheme(preferredColorScheme)
+    .sheet(isPresented: Binding(get: { model.showMessageSearch }, set: { model.showMessageSearch = $0 })) {
+      MessageSearchView()
+    }
+    .sheet(isPresented: Binding(get: { model.showNewConversation }, set: { model.showNewConversation = $0 })) {
+      NewConversationSheet()
+    }
     .onChange(of: model.selectedSection) { oldSection, newSection in
+      Task { await model.sectionDidChange(newSection) }
       if oldSection == .workspace && newSection != .workspace {
         Task {
           if let serverID = model.selectedServerID {
@@ -35,7 +58,6 @@ struct AppRootView: View {
           } else {
             await model.refresh()
           }
-          model.workspaceStartFragment = nil
         }
       }
     }
@@ -115,19 +137,37 @@ private struct CompactRootView: View {
   var body: some View {
     @Bindable var model = model
     TabView(selection: $model.selectedSection) {
-      NavigationStack { ConversationListView(compactNavigation: true) }
+      NavigationStack {
+        ConversationListView(compactNavigation: true)
+          .navigationDestination(item: navigationRoom(scope: "direct")) { _ in ChatView() }
+      }
         .tabItem { Label("Messages", systemImage: "message.fill") }.tag(AppModel.Section.messages)
-      NavigationStack { MobileServersView() }
+      NavigationStack {
+        MobileServersView()
+          .navigationDestination(item: navigationRoom(scope: "channel")) { _ in ChatView() }
+      }
         .tabItem { Label("Servers", systemImage: "rectangle.3.group.fill") }.tag(
           AppModel.Section.servers)
       NavigationStack { FriendsView() }
         .tabItem { Label("Friends", systemImage: "person.2.fill") }.tag(AppModel.Section.friends)
+      NavigationStack { ActivityView() }
+        .tabItem { Label("Activity", systemImage: "bell.fill") }.tag(AppModel.Section.activity)
+        .badge(model.unreadActivityCount)
       NavigationStack { WebWorkspaceView() }
         .tabItem { Label("Workspace", systemImage: "square.grid.2x2.fill") }.tag(AppModel.Section.workspace)
       NavigationStack { SettingsView() }
         .tabItem { Label("You", systemImage: "person.crop.circle.fill") }.tag(
           AppModel.Section.settings)
     }
+  }
+
+  private func navigationRoom(scope: String) -> Binding<AppModel.Room?> {
+    Binding(
+      get: { model.navigationRoom?.scope == scope ? model.navigationRoom : nil },
+      set: { room in
+        if let room { model.navigationRoom = room }
+        else if model.navigationRoom?.scope == scope { model.navigationRoom = nil }
+      })
   }
 }
 
@@ -139,7 +179,7 @@ private struct SplitRootView: View {
     switch model.selectedSection {
     case .messages, .servers:
       threeColumnRoot
-    case .friends, .workspace, .settings:
+    case .friends, .activity, .workspace, .settings:
       twoColumnRoot
     }
   }
@@ -152,7 +192,8 @@ private struct SplitRootView: View {
       browserColumn
         .navigationSplitViewColumnWidth(min: 270, ideal: 330, max: 440)
     } detail: {
-      if model.selectedRoom != nil {
+      if let room = model.selectedRoom,
+        (model.selectedSection == .messages && room.scope == "direct") || (model.selectedSection == .servers && room.scope == "channel") {
         ChatView()
       } else {
         EmptyDetailView(
@@ -172,6 +213,8 @@ private struct SplitRootView: View {
       switch model.selectedSection {
       case .friends:
         FriendsView()
+      case .activity:
+        ActivityView()
       case .settings:
         SettingsView(showNavigationTitle: true, detailPresentation: true)
       case .workspace:
@@ -187,121 +230,8 @@ private struct SplitRootView: View {
     switch model.selectedSection {
     case .messages: ConversationListView(compactNavigation: false)
     case .servers: ServerChannelBrowserView()
-    case .friends, .workspace, .settings: EmptyView()
+    case .friends, .activity, .workspace, .settings: EmptyView()
     }
-  }
-}
-
-private struct WebWorkspaceView: View {
-  @Environment(AppModel.self) private var model
-  @State private var reloadToken = UUID()
-
-  var body: some View {
-    VStack(spacing: 0) {
-      HStack(spacing: 12) {
-        Image(systemName: "square.grid.2x2.fill")
-          .foregroundStyle(.tint)
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Full Workspace").font(.headline)
-          Text("Development, live calls, and every web workspace tool")
-            .font(.caption).foregroundStyle(.secondary)
-        }
-        Spacer()
-        Button { reloadToken = UUID() } label: { Label("Reload", systemImage: "arrow.clockwise") }
-          .adaptiveGlassButton()
-      }
-      .padding(.horizontal, 16)
-      .padding(.vertical, 10)
-      Divider()
-      PlainwireWorkspaceWebView(
-        reloadToken: reloadToken, initialFragment: model.workspaceStartFragment)
-    }
-    .navigationTitle("Workspace")
-  }
-}
-
-#if os(iOS)
-private struct PlainwireWorkspaceWebView: UIViewRepresentable {
-  @Environment(AppModel.self) private var model
-  let reloadToken: UUID
-  let initialFragment: String?
-
-  func makeUIView(context: Context) -> WKWebView { makeWebView(coordinator: context.coordinator) }
-  func updateUIView(_ view: WKWebView, context: Context) {
-    if context.coordinator.lastReload != reloadToken {
-      context.coordinator.lastReload = reloadToken
-      view.reload()
-    }
-  }
-  func makeCoordinator() -> Coordinator {
-    Coordinator(reloadToken: reloadToken, onSessionEnded: { Task { await model.logout() } })
-  }
-}
-#else
-private struct PlainwireWorkspaceWebView: NSViewRepresentable {
-  @Environment(AppModel.self) private var model
-  let reloadToken: UUID
-  let initialFragment: String?
-
-  func makeNSView(context: Context) -> WKWebView { makeWebView(coordinator: context.coordinator) }
-  func updateNSView(_ view: WKWebView, context: Context) {
-    if context.coordinator.lastReload != reloadToken {
-      context.coordinator.lastReload = reloadToken
-      view.reload()
-    }
-  }
-  func makeCoordinator() -> Coordinator {
-    Coordinator(reloadToken: reloadToken, onSessionEnded: { Task { await model.logout() } })
-  }
-}
-#endif
-
-private extension PlainwireWorkspaceWebView {
-  final class Coordinator: NSObject, WKHTTPCookieStoreObserver {
-    var lastReload: UUID
-    var hasLoadedSession = false
-    let onSessionEnded: @MainActor () -> Void
-
-    init(reloadToken: UUID, onSessionEnded: @escaping @MainActor () -> Void) {
-      lastReload = reloadToken
-      self.onSessionEnded = onSessionEnded
-    }
-
-    func cookiesDidChange(in cookieStore: WKHTTPCookieStore) {
-      guard hasLoadedSession else { return }
-      cookieStore.getAllCookies { [weak self] cookies in
-        guard let self, !cookies.contains(where: { $0.name == "pw_session" }) else { return }
-        Task { @MainActor in self.onSessionEnded() }
-      }
-    }
-  }
-
-  func makeWebView(coordinator: Coordinator) -> WKWebView {
-    let configuration = WKWebViewConfiguration()
-    configuration.websiteDataStore = .nonPersistent()
-    configuration.defaultWebpagePreferences.allowsContentJavaScript = true
-    #if os(iOS)
-      configuration.allowsInlineMediaPlayback = true
-    #endif
-    let view = WKWebView(frame: .zero, configuration: configuration)
-    var baseURL = PlainwireConfiguration().baseURL
-    if let initialFragment, var parts = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) {
-      parts.fragment = initialFragment
-      baseURL = parts.url ?? baseURL
-    }
-    let cookies = HTTPCookieStorage.shared.cookies(for: baseURL) ?? []
-    let cookieStore = configuration.websiteDataStore.httpCookieStore
-    cookieStore.add(coordinator)
-    Task { @MainActor in
-      for cookie in cookies {
-        await withCheckedContinuation { continuation in
-          cookieStore.setCookie(cookie) { continuation.resume() }
-        }
-      }
-      coordinator.hasLoadedSession = true
-      view.load(URLRequest(url: baseURL))
-    }
-    return view
   }
 }
 
@@ -316,5 +246,22 @@ private struct EmptyDetailView: View {
       ContentUnavailableView(title, systemImage: symbol, description: Text(description))
         .padding(32)
     }
+  }
+}
+
+private struct ConnectionRecoveryView: View {
+  @Environment(AppModel.self) private var model
+  var body: some View {
+    ContentUnavailableView {
+      Label("Unable to connect", systemImage: "wifi.exclamationmark")
+    } description: {
+      Text("Your saved session is still here. Check your connection and try again.")
+    } actions: {
+      Button("Try Again") { Task { await model.retryStart() } }
+        .buttonStyle(.borderedProminent)
+      Button("Sign Out", role: .destructive) { Task { await model.logout() } }
+        .buttonStyle(.bordered)
+    }
+    .background(AppBackdrop())
   }
 }

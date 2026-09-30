@@ -22,16 +22,28 @@ struct SidebarView: View {
           Button {
             model.selectedSection = section
           } label: {
-            Label(section.title, systemImage: section.systemImage)
-              .fontWeight(model.selectedSection == section ? .semibold : .regular)
-              .frame(maxWidth: .infinity, alignment: .leading)
-              .contentShape(Rectangle())
+            HStack {
+              Label(section.title, systemImage: section.systemImage)
+                .fontWeight(model.selectedSection == section ? .semibold : .regular)
+              Spacer()
+              let count = section == .messages ? model.unreadMessageCount : section == .activity ? model.unreadActivityCount : 0
+              if count > 0 {
+                Text(count > 99 ? "99+" : "\(count)").font(.caption2.bold()).monospacedDigit()
+                  .padding(.horizontal, 6).padding(.vertical, 2)
+                  .background(Color.accentColor.opacity(0.15), in: Capsule())
+              }
+            }.contentShape(Rectangle())
           }
           .buttonStyle(.plain)
           .listRowBackground(
             model.selectedSection == section ? Color.accentColor.opacity(0.13) : Color.clear)
         }
       }
+
+      Section("Workspace") {
+        Button { model.openWorkspace(fragment: "forums") } label: { Label("Forums", systemImage: "text.bubble") }
+        Button { model.openWorkspace(fragment: "source") } label: { Label("Source Hub", systemImage: "chevron.left.forwardslash.chevron.right") }
+      }.buttonStyle(.plain)
 
       if !model.servers.isEmpty {
         Section("Servers") {

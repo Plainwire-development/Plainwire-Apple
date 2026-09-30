@@ -124,6 +124,9 @@ struct RemoteAvatar: View {
   }
 }
 
+// An immutable thumbnail safely crosses from the decoding task to the UI.
+private struct DecodedRemoteImage: @unchecked Sendable { let image: CGImage }
+
 enum CachedImagePhase {
   case empty
   case success(Image)
@@ -202,17 +205,21 @@ final class RemoteImageStore {
       do {
         let (data, response) = try await URLSession.shared.data(from: url)
         guard !Task.isCancelled, data.count <= 32 * 1024 * 1024,
-          (response as? HTTPURLResponse)?.statusCode == 200,
-          let source = CGImageSourceCreateWithData(data as CFData, nil)
+          (response as? HTTPURLResponse)?.statusCode == 200
         else { return nil }
-        let options: [CFString: Any] = [
-          kCGImageSourceCreateThumbnailFromImageAlways: true,
-          kCGImageSourceThumbnailMaxPixelSize: max(64, pixelSize),
-          kCGImageSourceCreateThumbnailWithTransform: true,
-          kCGImageSourceShouldCacheImmediately: true,
-        ]
-        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
-        else { return nil }
+        let decoded = await Task.detached(priority: .utility) { () -> DecodedRemoteImage? in
+          let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: max(64, pixelSize),
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+          ]
+          guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+            let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+          else { return nil }
+          return DecodedRemoteImage(image: image)
+        }.value
+        guard !Task.isCancelled, let thumbnail = decoded?.image else { return nil }
         #if os(iOS)
           return UIImage(cgImage: thumbnail)
         #else
@@ -297,9 +304,11 @@ struct AdaptiveGlassButtonModifier: ViewModifier {
 
 @available(iOS 26.0, macOS 26.0, *)
 private struct LiquidGlassSwitchToggleStyle: ToggleStyle {
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @AppStorage(AppPreferenceKeys.reduceInterfaceMotion) private var reduceInterfaceMotion = false
   func makeBody(configuration: Configuration) -> some View {
     Button {
-      withAnimation(.snappy(duration: 0.2)) { configuration.isOn.toggle() }
+      withAnimation(reduceMotion || reduceInterfaceMotion ? nil : .snappy(duration: 0.2)) { configuration.isOn.toggle() }
     } label: {
       HStack(spacing: 12) {
         configuration.label
@@ -387,5 +396,44 @@ struct ConnectionStatusView: View {
     case .failed: "Offline"
     case .stopped: "Idle"
     }
+  }
+}
+
+private struct SheetErrorNoticeModifier: ViewModifier {
+  @Environment(AppModel.self) private var model
+  func body(content: Content) -> some View {
+    content.safeAreaInset(edge: .bottom) {
+      if let error = model.errorMessage {
+        HStack(alignment: .top, spacing: 10) {
+          Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+          Text(error).font(.caption).frame(maxWidth: .infinity, alignment: .leading)
+          Button { model.errorMessage = nil } label: { Image(systemName: "xmark") }
+            .buttonStyle(.plain).accessibilityLabel("Dismiss error")
+        }.padding(12).background(.regularMaterial)
+      }
+    }
+  }
+}
+
+extension View {
+  func sheetErrorNotice() -> some View { modifier(SheetErrorNoticeModifier()) }
+}
+
+extension View {
+  @ViewBuilder func adaptiveSheetSize(minWidth: CGFloat, idealWidth: CGFloat? = nil, minHeight: CGFloat) -> some View {
+    #if os(macOS)
+      frame(minWidth: minWidth, idealWidth: idealWidth, minHeight: minHeight)
+    #else
+      frame(maxWidth: .infinity, maxHeight: .infinity)
+    #endif
+  }
+}
+
+extension Color {
+  init?(plainwireHex: String) {
+    let hex = plainwireHex.hasPrefix("#") ? String(plainwireHex.dropFirst()) : plainwireHex
+    guard hex.count == 6, let value = UInt64(hex, radix: 16) else { return nil }
+    self.init(red: Double((value >> 16) & 255) / 255,
+              green: Double((value >> 8) & 255) / 255, blue: Double(value & 255) / 255)
   }
 }

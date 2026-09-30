@@ -64,7 +64,7 @@ public enum JSONValue: Codable, Hashable, Sendable {
   public var intValue: Int64? {
     switch self {
     case .int(let v): return v
-    case .double(let v): return Int64(v)
+    case .double(let v): return Int64(exactly: v)
     case .string(let v): return Int64(v)
     default: return nil
     }

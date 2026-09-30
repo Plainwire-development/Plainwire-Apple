@@ -107,8 +107,7 @@ struct ServerChannelBrowserView: View {
     ) { channel in
       if channel.kind == "voice" {
         Button {
-          model.workspaceStartFragment = "server/\(channel.serverId)"
-          model.selectedSection = .workspace
+          model.openWorkspace(fragment: "voice/\(channel.id)")
         } label: {
           HStack(spacing: 9) {
             Image(systemName: "speaker.wave.2").foregroundStyle(.secondary).frame(width: 18)
@@ -226,8 +225,7 @@ private struct MobileServerChannelsView: View {
     ForEach(channels.sorted(by: { $0.position < $1.position })) { channel in
       if channel.kind == "voice" {
         Button {
-          model.workspaceStartFragment = "server/\(channel.serverId)"
-          model.selectedSection = .workspace
+          model.openWorkspace(fragment: "voice/\(channel.id)")
         } label: {
           Label(channel.name, systemImage: "speaker.wave.2")
         }
@@ -294,7 +292,8 @@ private struct CreateServerSheet: View {
         }
       }
     }
-    .frame(minWidth: 380, idealWidth: 480, minHeight: 270)
+    .adaptiveSheetSize(minWidth: 380, idealWidth: 480, minHeight: 270)
+    .sheetErrorNotice()
   }
 }
 
@@ -346,7 +345,8 @@ private struct JoinServerSheet: View {
       .navigationTitle("Join Server")
       .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
     }
-    .frame(minWidth: 380, idealWidth: 480, minHeight: 290)
+    .adaptiveSheetSize(minWidth: 380, idealWidth: 480, minHeight: 290)
+    .sheetErrorNotice()
     .onChange(of: input) { _, _ in preview = nil }
   }
 
@@ -470,6 +470,7 @@ private struct ServerManagementSheet: View {
       .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
     }
     .modifier(ServerManagementFrameModifier())
+    .sheetErrorNotice()
     .task {
       if detail == nil { await model.reloadServer(server.id) }
       if let me = detail?.members.first(where: { $0.user.id == model.session?.user.id }) {
@@ -611,8 +612,7 @@ private struct ServerManagementSheet: View {
     }
     Section("More tools") {
       Button {
-        model.workspaceStartFragment = "server/\(server.id)"
-        model.selectedSection = .workspace
+        model.openWorkspace(fragment: "server/\(server.id)")
         dismiss()
       } label: {
         Label("Open server in full workspace", systemImage: "square.grid.2x2")
@@ -810,12 +810,14 @@ private struct ChannelEditorSheet: View {
   let channel: PWChannel
   @State private var name: String
   @State private var topic: String
+  @State private var slowmodeSeconds: Int
   @State private var busy = false
 
   init(channel: PWChannel) {
     self.channel = channel
     _name = State(initialValue: channel.name)
     _topic = State(initialValue: channel.topic)
+    _slowmodeSeconds = State(initialValue: channel.slowmodeSeconds)
   }
 
   var body: some View {
@@ -823,6 +825,9 @@ private struct ChannelEditorSheet: View {
       Form {
         TextField("Channel name", text: $name)
         TextField("Topic", text: $topic, axis: .vertical).lineLimit(2...5)
+        if channel.kind == "text" {
+          Stepper(slowmodeSeconds == 0 ? "Slow mode: Off" : "Slow mode: \(slowmodeSeconds) seconds", value: $slowmodeSeconds, in: 0...21600, step: 5)
+        }
       }
       .navigationTitle("Channel Settings")
       .toolbar {
@@ -831,7 +836,7 @@ private struct ChannelEditorSheet: View {
           Button("Save") {
             Task {
               busy = true
-              if await model.saveChannel(channel, name: name, topic: topic) { dismiss() }
+              if await model.saveChannel(channel, name: name, topic: topic, slowmodeSeconds: slowmodeSeconds) { dismiss() }
               busy = false
             }
           }
@@ -839,6 +844,7 @@ private struct ChannelEditorSheet: View {
         }
       }
     }
-    .frame(minWidth: 380, idealWidth: 480, minHeight: 270)
+    .adaptiveSheetSize(minWidth: 380, idealWidth: 480, minHeight: 270)
+    .sheetErrorNotice()
   }
 }

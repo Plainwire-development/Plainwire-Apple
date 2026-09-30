@@ -146,7 +146,9 @@ public actor PlainwireRealtimeClient {
   }
 
   public func setSubscriptions(_ keys: Set<String>) async {
-    desiredSubscriptions = Set(keys.filter(isValidSubscription))
+    let next = Set(keys.filter(isValidSubscription))
+    guard next != desiredSubscriptions else { return }
+    desiredSubscriptions = next
     guard state == .connected else { return }
     try? await sendObject(["type": .string("unsubscribe_all")])
     for key in desiredSubscriptions.sorted() {
@@ -160,7 +162,9 @@ public actor PlainwireRealtimeClient {
   }
 
   public func watchPresence(_ userIDs: [PlainwireID]) async {
-    desiredPresence = Set(userIDs.filter { $0 > 0 }.prefix(2_000))
+    let next = Set(userIDs.filter { $0 > 0 }.prefix(2_000))
+    guard next != desiredPresence else { return }
+    desiredPresence = next
     if state == .connected { await sendPresenceWatch() }
   }
 
@@ -205,7 +209,8 @@ public actor PlainwireRealtimeClient {
         case .data(let value): data = value
         @unknown default: continue
         }
-        guard let object = try JSONDecoder().decode(JSONValue.self, from: data).objectValue,
+        guard webSocket === socket, !Task.isCancelled,
+          let object = try? JSONDecoder().decode(JSONValue.self, from: data).objectValue,
           let type = object["type"]?.stringValue
         else { continue }
         if type == "hello" {
@@ -223,6 +228,8 @@ public actor PlainwireRealtimeClient {
   }
 
   private func scheduleReconnect(reason: String) {
+    heartbeatTask?.cancel()
+    heartbeatTask = nil
     receiveTask?.cancel()
     receiveTask = nil
     webSocket?.cancel(with: .goingAway, reason: nil)
@@ -264,7 +271,6 @@ public actor PlainwireRealtimeClient {
   }
 
   private func sendPresenceWatch() async {
-    guard !desiredPresence.isEmpty else { return }
     let ids = desiredPresence.sorted().map(JSONValue.int)
     try? await sendObject(["type": .string("presence_watch"), "user_ids": .array(ids)])
   }
@@ -278,7 +284,7 @@ public actor PlainwireRealtimeClient {
       throw PlainwireAPIError.invalidResponse
     }
     do { try await socket.send(.string(text)) } catch {
-      scheduleReconnect(reason: error.localizedDescription)
+      if shouldRun, webSocket === socket { scheduleReconnect(reason: error.localizedDescription) }
       throw PlainwireAPIError.transport(error.localizedDescription)
     }
   }
@@ -287,7 +293,7 @@ public actor PlainwireRealtimeClient {
     guard value.utf8.count <= 128 else { return false }
     let parts = value.split(separator: ":", maxSplits: 1).map(String.init)
     guard parts.count == 2, ["direct", "channel", "thread", "forum", "server"].contains(parts[0]),
-      Int64(parts[1]) != nil
+      let id = Int64(parts[1]), id > 0
     else { return false }
     return true
   }

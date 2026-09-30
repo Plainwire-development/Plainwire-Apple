@@ -4,6 +4,16 @@
 	classes = {};
 	objectVersion = 56;
 	objects = {
+		B8D75D23F83AAD28FCA28D78 /* VoiceNoteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52528E2501C0CE76B0C62D49 /* VoiceNoteSheet.swift */; };
+		52528E2501C0CE76B0C62D49 /* VoiceNoteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Chat/VoiceNoteSheet.swift"; sourceTree = SOURCE_ROOT; };
+		FD06AC1A47B6AD78E76B6450 /* MessageText.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB575B6F209EC4D08087682C /* MessageText.swift */; };
+		FB575B6F209EC4D08087682C /* MessageText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/PlainwireCore/MessageText.swift"; sourceTree = SOURCE_ROOT; };
+		9438BCE7304923A11D8CCEAA /* ConversationTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44E7BF19841A9ED8EA82BFCB /* ConversationTools.swift */; };
+		44E7BF19841A9ED8EA82BFCB /* ConversationTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Chat/ConversationTools.swift"; sourceTree = SOURCE_ROOT; };
+		5B1EFB2894C85B08821A9C95 /* ActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97AD2A608892AA979CCE2233 /* ActivityView.swift */; };
+		97AD2A608892AA979CCE2233 /* ActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Home/ActivityView.swift"; sourceTree = SOURCE_ROOT; };
+		45929106F9877804A77D3DB7 /* WorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E49B0D56D549007CC0096A5B /* WorkspaceView.swift */; };
+		E49B0D56D549007CC0096A5B /* WorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Home/WorkspaceView.swift"; sourceTree = SOURCE_ROOT; };
 		09A2EAA596DF3828915E572F /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF700CF15D39946FA2E8625B /* AppModel.swift */; };
 		9ED0CF2CCBEAADFA3616EEC9 /* PlainwireApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DED249AE82B0055C40F0B65 /* PlainwireApp.swift */; };
 		9D789A55C8CE2CF2F5370816 /* NotificationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D10B1C1EB0418BCF485CBBB /* NotificationCoordinator.swift */; };
@@ -55,6 +65,11 @@
 		AEF63687048485D45524643C /* Plainwire.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Plainwire.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7B8633C7EB6F5CB13673C25D /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		E4F78730D65EE9F55E2BAC2F /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
+			B8D75D23F83AAD28FCA28D78 /* VoiceNoteSheet.swift in Sources */,
+			FD06AC1A47B6AD78E76B6450 /* MessageText.swift in Sources */,
+			9438BCE7304923A11D8CCEAA /* ConversationTools.swift in Sources */,
+			5B1EFB2894C85B08821A9C95 /* ActivityView.swift in Sources */,
+			45929106F9877804A77D3DB7 /* WorkspaceView.swift in Sources */,
 			09A2EAA596DF3828915E572F /* AppModel.swift in Sources */,
 			9ED0CF2CCBEAADFA3616EEC9 /* PlainwireApp.swift in Sources */,
 			9D789A55C8CE2CF2F5370816 /* NotificationCoordinator.swift in Sources */,
@@ -83,6 +98,11 @@
 		); runOnlyForDeploymentPostprocessing = 0; };
 		6CFC827E67DCAE34C72B9CED = {isa = PBXGroup; children = (932704417AB46D25E8F18983 /* Sources */, D4ED70D4D27623DE041795FF /* Resources */, 021F2B7F3E0C61452C987484 /* Products */); sourceTree = "<group>"; };
 		932704417AB46D25E8F18983 /* Sources */ = {isa = PBXGroup; children = (
+			52528E2501C0CE76B0C62D49 /* VoiceNoteSheet.swift */,
+			FB575B6F209EC4D08087682C /* MessageText.swift */,
+			44E7BF19841A9ED8EA82BFCB /* ConversationTools.swift */,
+			97AD2A608892AA979CCE2233 /* ActivityView.swift */,
+			E49B0D56D549007CC0096A5B /* WorkspaceView.swift */,
 			AF700CF15D39946FA2E8625B /* AppModel.swift */,
 			8DED249AE82B0055C40F0B65 /* PlainwireApp.swift */,
 			6D10B1C1EB0418BCF485CBBB /* NotificationCoordinator.swift */,
@@ -175,13 +195,13 @@
 			ASSETCATALOG_COMPILER_ACCENT_COLOR_NAME = AccentColor;
 			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 			CODE_SIGN_STYLE = Automatic;
-			CURRENT_PROJECT_VERSION = 4;
+			CURRENT_PROJECT_VERSION = 5;
 			ENABLE_PREVIEWS = YES;
 			GENERATE_INFOPLIST_FILE = NO;
 			INFOPLIST_FILE = Resources/Info.plist;
 			IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 			MACOSX_DEPLOYMENT_TARGET = 15.0;
-			MARKETING_VERSION = 1.2.1;
+			MARKETING_VERSION = 2.0.0;
 			PRODUCT_BUNDLE_IDENTIFIER = me.kokonico.plainwire;
 			PRODUCT_NAME = "$(TARGET_NAME)";
 			SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
@@ -198,13 +218,13 @@
 			ASSETCATALOG_COMPILER_ACCENT_COLOR_NAME = AccentColor;
 			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 			CODE_SIGN_STYLE = Automatic;
-			CURRENT_PROJECT_VERSION = 4;
+			CURRENT_PROJECT_VERSION = 5;
 			ENABLE_PREVIEWS = YES;
 			GENERATE_INFOPLIST_FILE = NO;
 			INFOPLIST_FILE = Resources/Info.plist;
 			IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 			MACOSX_DEPLOYMENT_TARGET = 15.0;
-			MARKETING_VERSION = 1.2.1;
+			MARKETING_VERSION = 2.0.0;
 			PRODUCT_BUNDLE_IDENTIFIER = me.kokonico.plainwire;
 			PRODUCT_NAME = "$(TARGET_NAME)";
 			SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
