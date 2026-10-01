@@ -2,6 +2,23 @@
 
 Run `./scripts/verify.sh` and build the Mac and iOS Simulator targets before a release. The checks below need a running Plainwire server and two accounts.
 
+## Local audit smoke tests
+
+These Mac checks need no account. The playback test mounts controls in an invisible window and generates its own sample video:
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swiftc \
+  -swift-version 6 -parse-as-library Sources/PlainwireCore/APIError.swift \
+  App/Views/Chat/MediaPlayback.swift Tests/Manual/MediaPlaybackSmoke.swift \
+  -o /tmp/plainwire-media-smoke
+/tmp/plainwire-media-smoke
+python3 Tests/Manual/TransferSmoke.py
+```
+
+The transfer test starts a temporary localhost HTTP server, compiles a temporary executable, checks byte limits with and without Content-Length, and checks that sign-out invalidates an in-flight session restore.
+
+For the presence fix, disconnect the second account and verify that Friends, profile sheets, and member panels agree. Disable networking on the observing client and verify it displays unavailable presence after the socket deadline. Reconnect and confirm a fresh snapshot restores the correct state. Close or revoke a room during a slow fetch and verify that its content does not reappear.
+
 ## Mac install
 
 - Run `./scripts/install-macos.sh` from a clean checkout. Confirm `~/Applications/Plainwire.app` opens.

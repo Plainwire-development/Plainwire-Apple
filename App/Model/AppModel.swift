@@ -68,15 +68,18 @@ final class AppModel {
   private let api: PlainwireAPIClient
   private let realtime: PlainwireRealtimeClient
   private var eventTask: Task<Void, Never>?
-  private var stateTask: Task<Void, Never>?
   private var refreshTask: Task<Void, Never>?
+  private var realtimeWork: [String: Task<Void, Never>] = [:]
   private var typingStopTask: Task<Void, Never>?
   private var typingExpiryTasks: [String: Task<Void, Never>] = [:]
   private var sessionGeneration = 0
+  private var signingOut = false
   private var refreshing = false
   private var loadingRooms = Set<String>()
   private var reconcilingRooms = Set<String>()
   private var deletedMessages: [PlainwireID: Date] = [:]
+  private var revokedRooms = Set<String>()
+  private var roomRevisions: [String: Int] = [:]
   private var messageOperations = Set<String>()
   private var lastAcknowledgedMessageIDs: [PlainwireID: PlainwireID] = [:]
   private var readingConversations = Set<PlainwireID>()
@@ -128,8 +131,7 @@ final class AppModel {
   var isBusy = false
   var syncWarning: String?
   var typingByRoom: [String: [PlainwireID: String]] = [:]
-  private var livePresence: [PlainwireID: String] = [:]
-  private var livePlatforms: [PlainwireID: String] = [:]
+  private var presence = PWPresence()
 
   init() {
     api = PlainwireAPIClient(configuration: config)
@@ -229,15 +231,20 @@ final class AppModel {
   }
 
   func logout() async {
-    guard sessionState != .signedOut || session != nil else { return }
+    guard !signingOut, sessionState != .signedOut || session != nil else { return }
+    signingOut = true
+    sessionState = .signedOut
     isBusy = true
-    defer { isBusy = false }
+    defer { isBusy = false; signingOut = false }
     sessionGeneration += 1
+    let signOut = Task { try? await api.logout() }
     draftSaveTask?.cancel()
     draftSaveTask = nil
     if let key = draftStorageKey { UserDefaults.standard.removeObject(forKey: key) }
     refreshTask?.cancel()
     refreshTask = nil
+    realtimeWork.values.forEach { $0.cancel() }
+    realtimeWork.removeAll()
     typingStopTask?.cancel()
     loadedRooms = []
     loadingRooms = []
@@ -250,6 +257,8 @@ final class AppModel {
     lastSyncAt = nil
     lastTypingSent = [:]
     deletedMessages = [:]
+    revokedRooms = []
+    roomRevisions = [:]
     messageOperations = []
     lastAcknowledgedMessageIDs = [:]
     readingConversations = []
@@ -274,12 +283,10 @@ final class AppModel {
     await realtime.unsubscribeAll()
     await realtime.watchPresence([])
     eventTask?.cancel()
-    stateTask?.cancel()
     typingExpiryTasks.values.forEach { $0.cancel() }
     typingExpiryTasks = [:]
     typingByRoom = [:]
-    livePresence = [:]
-    livePlatforms = [:]
+    presence.reset()
     session = nil
     conversations = []
     servers = []
@@ -296,9 +303,10 @@ final class AppModel {
     RemoteImageStore.shared.clear()
     URLCache.shared.removeAllCachedResponses()
     NotificationCoordinator.shared.updateBadgeCount(0)
+    NotificationCoordinator.shared.clearSessionNotifications()
     selectedSection = .messages
     sessionState = .signedOut
-    try? await api.logout()
+    await signOut.value
   }
 
   func refresh() async {
@@ -331,6 +339,7 @@ final class AppModel {
     if let room = selectedRoom {
       await realtime.sendTyping(scope: room.scope, id: room.roomID, active: false)
     }
+    presence.reset()
     await realtime.stop()
   }
 
@@ -353,8 +362,12 @@ final class AppModel {
   }
 
   func profile(id: PlainwireID) async -> PWProfile? {
-    do { return try await api.profile(id: id) }
-    catch { errorMessage = error.localizedDescription; return nil }
+    let generation = sessionGeneration
+    do {
+      let result = try await api.profile(id: id)
+      guard generation == sessionGeneration, !Task.isCancelled else { return nil }
+      return result
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return nil }
   }
 
   func saveProfile(
@@ -370,22 +383,36 @@ final class AppModel {
       guard generation == sessionGeneration else { return false }
       session = restored
       return true
-    } catch { errorMessage = error.localizedDescription; return false }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func accountSessions() async -> [PWAccountSession] {
-    do { return try await api.accountSessions() }
-    catch { errorMessage = error.localizedDescription; return [] }
+    let generation = sessionGeneration
+    do {
+      let result = try await api.accountSessions()
+      guard generation == sessionGeneration, !Task.isCancelled else { return [] }
+      return result
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return [] }
   }
 
   func logoutOtherSessions() async -> Bool {
-    do { _ = try await api.logoutOtherSessions(); return true }
-    catch { errorMessage = error.localizedDescription; return false }
+    let generation = sessionGeneration
+    do {
+      _ = try await api.logoutOtherSessions()
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
+      return true
+    }
+    catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func changePassword(current: String, new: String) async -> Bool {
-    do { try await api.changePassword(current: current, new: new); return true }
-    catch { errorMessage = error.localizedDescription; return false }
+    let generation = sessionGeneration
+    do {
+      try await api.changePassword(current: current, new: new)
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
+      return true
+    }
+    catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func changeUsername(current: String, new: String) async -> Bool {
@@ -397,7 +424,7 @@ final class AppModel {
       guard generation == sessionGeneration else { return false }
       session = restored
       return true
-    } catch { errorMessage = error.localizedDescription; return false }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func updateEmail(_ email: String, password: String) async -> String? {
@@ -410,7 +437,7 @@ final class AppModel {
       return result.objectValue?["email_delivery"]?.boolValue == false
         ? "Email saved, but the verification message could not be sent."
         : "Email saved. Check your inbox for verification."
-    } catch { errorMessage = error.localizedDescription; return nil }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return nil }
   }
 
   func removeEmail(password: String) async -> Bool {
@@ -421,36 +448,42 @@ final class AppModel {
       guard generation == sessionGeneration else { return false }
       session = restored
       return true
-    } catch { errorMessage = error.localizedDescription; return false }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func resendEmailVerification() async -> String? {
+    let generation = sessionGeneration
     do {
       let result = try await api.resendEmailVerification()
+      guard generation == sessionGeneration, !Task.isCancelled else { return nil }
       if result.objectValue?["already_verified"]?.boolValue == true { return "Email is already verified." }
       return result.objectValue?["email_delivery"]?.boolValue == false
         ? "The verification message could not be sent."
         : "Verification email sent."
-    } catch { errorMessage = error.localizedDescription; return nil }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return nil }
   }
 
   func closeAccount(password: String, permanently: Bool) async -> Bool {
+    let generation = sessionGeneration
     do {
       if permanently { try await api.deleteAccount(password: password) }
       else { try await api.disableAccount(password: password) }
+      guard generation == sessionGeneration else { return false }
       await logout()
       return true
-    } catch { errorMessage = error.localizedDescription; return false }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func createServer(name: String, description: String) async -> Bool {
+    let generation = sessionGeneration
     do {
       let result = try await api.createServer(name: name, description: description)
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
       await refresh()
       if let id = result.objectValue?["id"]?.intValue,
         let server = servers.first(where: { $0.id == id }) { await openServer(server) }
       return true
-    } catch { errorMessage = error.localizedDescription; return false }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func ensureServerDetails(_ id: PlainwireID) async {
@@ -471,182 +504,248 @@ final class AppModel {
       guard generation == sessionGeneration else { return }
       serverDetails[id] = detail
       await refresh()
-    } catch { errorMessage = error.localizedDescription }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription } }
   }
 
   func saveServer(id: PlainwireID, fields: [String: String]) async -> Bool {
-    do { try await api.updateServer(id: id, fields: fields); await reloadServer(id); return true }
-    catch { errorMessage = error.localizedDescription; return false }
+    let generation = sessionGeneration
+    do {
+      try await api.updateServer(id: id, fields: fields)
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
+      await reloadServer(id)
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
+      return true
+    }
+    catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func createCategory(serverID: PlainwireID, name: String) async -> Bool {
-    do { try await api.createCategory(serverID: serverID, name: name); await reloadServer(serverID); return true }
-    catch { errorMessage = error.localizedDescription; return false }
+    let generation = sessionGeneration
+    do {
+      try await api.createCategory(serverID: serverID, name: name)
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
+      await reloadServer(serverID)
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
+      return true
+    }
+    catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func createChannel(
     serverID: PlainwireID, name: String, kind: String, categoryID: PlainwireID?
   ) async -> Bool {
+    let generation = sessionGeneration
     do {
       try await api.createChannel(serverID: serverID, name: name, kind: kind, categoryID: categoryID)
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
       await reloadServer(serverID)
       return true
-    } catch { errorMessage = error.localizedDescription; return false }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func saveChannel(_ channel: PWChannel, name: String, topic: String, slowmodeSeconds: Int) async -> Bool {
+    let generation = sessionGeneration
     do {
       try await api.updateChannel(id: channel.id, name: name, topic: topic, slowmodeSeconds: slowmodeSeconds)
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
       await reloadServer(channel.serverId)
       if selectedChannelID == channel.id,
         let updated = serverDetails[channel.serverId]?.channels.first(where: { $0.id == channel.id }) {
         await openChannel(updated)
       }
       return true
-    } catch { errorMessage = error.localizedDescription; return false }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func invites(serverID: PlainwireID) async -> [PWInvite] {
-    do { return try await api.invites(serverID: serverID) }
-    catch { errorMessage = error.localizedDescription; return [] }
+    let generation = sessionGeneration
+    do {
+      let result = try await api.invites(serverID: serverID)
+      guard generation == sessionGeneration, !Task.isCancelled else { return [] }
+      return result
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return [] }
   }
 
   func createInvite(serverID: PlainwireID, channelID: PlainwireID?) async -> PWInvite? {
-    do { return try await api.createInvite(serverID: serverID, channelID: channelID) }
-    catch { errorMessage = error.localizedDescription; return nil }
+    let generation = sessionGeneration
+    do {
+      let result = try await api.createInvite(serverID: serverID, channelID: channelID)
+      guard generation == sessionGeneration, !Task.isCancelled else { return nil }
+      return result
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return nil }
   }
 
   func revokeInvite(serverID: PlainwireID, code: String) async -> Bool {
-    do { try await api.revokeInvite(serverID: serverID, code: code); return true }
-    catch { errorMessage = error.localizedDescription; return false }
+    let generation = sessionGeneration
+    do {
+      try await api.revokeInvite(serverID: serverID, code: code)
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
+      return true
+    }
+    catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func invitePreview(code: String) async -> JSONValue? {
-    do { return try await api.invitePreview(code: code) }
-    catch { errorMessage = error.localizedDescription; return nil }
+    let generation = sessionGeneration
+    do {
+      let result = try await api.invitePreview(code: code)
+      guard generation == sessionGeneration, !Task.isCancelled else { return nil }
+      return result
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return nil }
   }
 
   func joinInvite(code: String) async -> Bool {
+    let generation = sessionGeneration
     do {
       let result = try await api.joinInvite(code: code)
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
       await refresh()
       if let serverID = result.objectValue?["server_id"]?.intValue,
         let server = servers.first(where: { $0.id == serverID }) { await openServer(server) }
       return true
-    } catch { errorMessage = error.localizedDescription; return false }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func saveMemberProfile(
     serverID: PlainwireID, nickname: String, bio: String, avatarURL: String
   ) async -> Bool {
+    let generation = sessionGeneration
     guard let userID = session?.user.id else { return false }
     do {
       try await api.updateMemberProfile(
         serverID: serverID, userID: userID, nickname: nickname, bio: bio,
         avatarURL: avatarURL)
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
       await reloadServer(serverID)
       return true
-    } catch { errorMessage = error.localizedDescription; return false }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func sendFriendRequest(to user: PWUser) async {
+    let generation = sessionGeneration
     do {
       try await api.requestFriend(userID: user.id)
+      guard generation == sessionGeneration, !Task.isCancelled else { return }
       await refresh()
-    } catch { errorMessage = error.localizedDescription }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription } }
   }
 
   func acceptFriend(_ user: PWUser) async {
+    let generation = sessionGeneration
     do {
       try await api.acceptFriend(userID: user.id)
+      guard generation == sessionGeneration, !Task.isCancelled else { return }
       await refresh()
-    } catch { errorMessage = error.localizedDescription }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription } }
   }
 
   func removeFriend(_ user: PWUser) async {
+    let generation = sessionGeneration
     do {
       try await api.removeFriend(userID: user.id)
+      guard generation == sessionGeneration, !Task.isCancelled else { return }
       await refresh()
-    } catch { errorMessage = error.localizedDescription }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription } }
   }
 
   func startConversation(with user: PWUser) async {
+    let generation = sessionGeneration
     do {
       let created = try await api.createConversation(userIDs: [user.id])
+      guard generation == sessionGeneration, !Task.isCancelled else { return }
       try await bootstrap()
       if let conversation = conversations.first(where: { $0.id == created.id }) {
         await openConversation(conversation)
+        guard generation == sessionGeneration, selectedRoom?.identifier == "direct:\(created.id)" else { return }
         navigationRoom = selectedRoom
       }
-    } catch { errorMessage = error.localizedDescription }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription } }
   }
 
   func createConversation(users: [PWUser], name: String) async -> Bool {
+    let generation = sessionGeneration
     do {
       let created = try await api.createConversation(userIDs: users.map(\.id), name: name)
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
       try await bootstrap()
       guard let conversation = conversations.first(where: { $0.id == created.id }) else { return false }
       await openConversation(conversation)
+      guard generation == sessionGeneration, selectedRoom?.identifier == "direct:\(created.id)" else { return false }
       navigationRoom = selectedRoom
       return true
-    } catch { errorMessage = error.localizedDescription; return false }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func updateConversation(id: PlainwireID, name: String) async -> Bool {
+    let generation = sessionGeneration
     do {
       try await api.updateConversation(id: id, fields: ["name": .string(name)])
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
       await loadConversationDetails(id)
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
       try await bootstrap()
       if selectedRoom?.roomID == id, let conversation = conversations.first(where: { $0.id == id }) {
         await openConversation(conversation)
       }
       return true
-    } catch { errorMessage = error.localizedDescription; return false }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func addMembers(id: PlainwireID, users: [PWUser]) async -> Bool {
+    let generation = sessionGeneration
     do {
       try await api.addConversationMembers(id: id, userIDs: users.map(\.id))
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
       await loadConversationDetails(id)
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
       try await bootstrap()
       return true
-    } catch { errorMessage = error.localizedDescription; return false }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func setMemberRole(conversationID: PlainwireID, userID: PlainwireID, moderator: Bool) async -> Bool {
+    let generation = sessionGeneration
     do {
       try await api.setConversationRole(id: conversationID, userID: userID, moderator: moderator)
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
       await loadConversationDetails(conversationID)
       return true
-    } catch { errorMessage = error.localizedDescription; return false }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
   func removeMember(conversationID: PlainwireID, userID: PlainwireID) async -> Bool {
+    let generation = sessionGeneration
     do {
       try await api.removeConversationMember(id: conversationID, userID: userID)
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
       await loadConversationDetails(conversationID)
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
       await refresh()
       return true
-    } catch { errorMessage = error.localizedDescription; return false }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func conversationAction(_ conversation: PWConversation, action: PlainwireAPIClient.ConversationAction) async -> Bool {
+    let generation = sessionGeneration
     do {
       try await api.conversationAction(id: conversation.id, action: action)
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
       try await bootstrap()
       if action != .accept, selectedRoom?.roomID == conversation.id, selectedRoom?.scope == "direct" {
         selectedRoom = nil
         navigationRoom = nil
       }
       return true
-    } catch { errorMessage = error.localizedDescription; return false }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func blockUser(_ user: PWUser, blocked: Bool) async -> Bool {
+    let generation = sessionGeneration
     do {
       try await api.blockUser(id: user.id, blocked: blocked)
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
       await refresh()
       return true
-    } catch { errorMessage = error.localizedDescription; return false }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func searchMessages(_ query: String, before: PlainwireID? = nil) async throws -> PWMessageSearch {
@@ -661,7 +760,7 @@ final class AppModel {
     let generation = sessionGeneration
     let key = "pin:\(message.id)"
     guard messageOperations.insert(key).inserted else { return false }
-    defer { messageOperations.remove(key) }
+    defer { if generation == sessionGeneration { messageOperations.remove(key) } }
     do {
       try await api.setPinned(messageID: message.id, pinned: !message.pinned)
       guard generation == sessionGeneration else { return false }
@@ -669,7 +768,7 @@ final class AppModel {
       updated.pinned = !message.pinned
       upsert(updated, in: "\(message.scope):\(message.scopeId)")
       return true
-    } catch { errorMessage = error.localizedDescription; return false }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func forward(_ message: PWMessage, to room: Room) async -> Bool {
@@ -680,7 +779,7 @@ final class AppModel {
       upsert(sent, in: room.identifier)
       scheduleSync()
       return true
-    } catch { errorMessage = error.localizedDescription; return false }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
 
   func jumpToMessage(id: PlainwireID) async {
@@ -697,7 +796,7 @@ final class AppModel {
         reachedBeginning.remove(room.identifier)
         setMessages(context.messages.sorted { $0.id < $1.id }, roomKey: room.identifier)
         messageJumpID = id
-      } catch { errorMessage = error.localizedDescription }
+      } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription } }
     }
   }
 
@@ -728,7 +827,7 @@ final class AppModel {
       setMessages(context.messages.sorted { $0.id < $1.id }, roomKey: room.identifier)
       messageJumpID = context.targetId
       navigationRoom = room
-    } catch { errorMessage = error.localizedDescription }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription } }
   }
 
   func returnToLive() async {
@@ -756,10 +855,11 @@ final class AppModel {
   }
 
   func clearActivity() async {
+    let generation = sessionGeneration
     do {
       try await api.clearNotifications()
       notifications = []
-    } catch { errorMessage = error.localizedDescription }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription } }
   }
 
   func openWorkspace(fragment: String? = nil) {
@@ -785,11 +885,13 @@ final class AppModel {
 
   func loadConversationDetails(_ id: PlainwireID) async {
     let generation = sessionGeneration
+    let revision = roomRevisions["direct:\(id)", default: 0]
     guard loadingConversationDetails.insert(id).inserted else { return }
     defer { if generation == sessionGeneration { loadingConversationDetails.remove(id) } }
     do {
       let detail = try await api.conversation(id: id)
-      guard generation == sessionGeneration else { return }
+      guard generation == sessionGeneration, !Task.isCancelled,
+        revision == roomRevisions["direct:\(id)", default: 0] else { return }
       conversationDetails[id] = detail
       await updatePresenceWatch()
     } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription } }
@@ -826,7 +928,7 @@ final class AppModel {
         await openChannel(channel, server: server)
       }
       await updateRealtimeSubscriptions()
-    } catch { errorMessage = error.localizedDescription }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription } }
   }
 
   func openChannel(_ channel: PWChannel, server: PWServer? = nil) async {
@@ -882,12 +984,15 @@ final class AppModel {
     }
     guard loadingRooms.insert(room.identifier).inserted else { return }
     let generation = sessionGeneration
-    defer { loadingRooms.remove(room.identifier) }
+    defer { if generation == sessionGeneration { loadingRooms.remove(room.identifier) } }
+    let revision = roomRevisions[room.identifier, default: 0]
     do {
       let messages = try await api.messages(scope: room.scope, id: room.roomID)
-      guard generation == sessionGeneration, !Task.isCancelled else { return }
+      guard generation == sessionGeneration, !Task.isCancelled,
+        revision == roomRevisions[room.identifier, default: 0] else { return }
+      revokedRooms.remove(room.identifier)
       // Preserve realtime messages that arrived while the initial request was in flight.
-      let combined = messages + (roomMessages[room.identifier] ?? [])
+      let combined = (roomMessages[room.identifier] ?? []) + messages
       setMessages(deduplicated(combined).sorted { $0.id < $1.id }, roomKey: room.identifier)
       loadedRooms.insert(room.identifier)
       if messages.count < 50 { reachedBeginning.insert(room.identifier) }
@@ -900,12 +1005,14 @@ final class AppModel {
     guard loadedRooms.contains(room.identifier), !contextRooms.contains(room.identifier),
       reconcilingRooms.insert(room.identifier).inserted else { return }
     let generation = sessionGeneration
-    defer { reconcilingRooms.remove(room.identifier) }
+    let revision = roomRevisions[room.identifier, default: 0]
+    defer { if generation == sessionGeneration { reconcilingRooms.remove(room.identifier) } }
     do {
       // Refresh the live tail to catch edits and deletions during a disconnect.
       let baseline = roomMessages[room.identifier] ?? []
       let tail = try await api.messages(scope: room.scope, id: room.roomID)
-      guard generation == sessionGeneration, !Task.isCancelled else { return }
+      guard generation == sessionGeneration, !Task.isCancelled,
+        revision == roomRevisions[room.identifier, default: 0] else { return }
       let existing = roomMessages[room.identifier] ?? []
       if let first = tail.map(\.id).min() {
         let recentIDs = Set(tail.map(\.id))
@@ -922,7 +1029,8 @@ final class AppModel {
       let end = tail.last?.id ?? 0
       while let after = cursor, after < end {
         let page = try await api.messages(scope: room.scope, id: room.roomID, after: after)
-        guard generation == sessionGeneration, !Task.isCancelled else { return }
+        guard generation == sessionGeneration, !Task.isCancelled,
+        revision == roomRevisions[room.identifier, default: 0] else { return }
         guard let next = page.map(\.id).max(), next > after else { break }
         let merged = page + (roomMessages[room.identifier] ?? [])
         setMessages(deduplicated(merged).sorted { $0.id < $1.id }, roomKey: room.identifier)
@@ -935,8 +1043,9 @@ final class AppModel {
   }
 
   func readConversation(_ conversation: PWConversation) async {
+    let generation = sessionGeneration
     do { try await api.markConversationRead(conversation.id); scheduleSync() }
-    catch { errorMessage = error.localizedDescription }
+    catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription } }
   }
 
   func markRead(room: Room?) async {
@@ -967,15 +1076,17 @@ final class AppModel {
       let first = roomMessages[room.identifier]?.first
     else { return }
     let generation = sessionGeneration
+    let revision = roomRevisions[room.identifier, default: 0]
     loadingOlder.insert(room.identifier)
-    defer { loadingOlder.remove(room.identifier) }
+    defer { if generation == sessionGeneration { loadingOlder.remove(room.identifier) } }
     do {
       let older = try await api.messages(scope: room.scope, id: room.roomID, before: first.id)
-      guard generation == sessionGeneration, !Task.isCancelled else { return }
+      guard generation == sessionGeneration, !Task.isCancelled,
+        revision == roomRevisions[room.identifier, default: 0] else { return }
       if older.isEmpty || older.count < 50 { reachedBeginning.insert(room.identifier) }
       let combined = older.sorted { $0.id < $1.id } + (roomMessages[room.identifier] ?? [])
       setMessages(deduplicated(combined), roomKey: room.identifier)
-    } catch { errorMessage = error.localizedDescription }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription } }
   }
 
   func sendMessage(_ text: String, in room: Room, replyTo: PlainwireID? = nil) async -> Bool {
@@ -995,13 +1106,18 @@ final class AppModel {
       scheduleSync()
       return true
     } catch {
-      errorMessage = error.localizedDescription
+      if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }
       return false
     }
   }
 
   func editMessage(_ message: PWMessage, body: String) async -> Bool {
     let generation = sessionGeneration
+    let body = body.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !body.isEmpty, body.utf16.count <= 5000 else {
+      errorMessage = "Messages must contain between 1 and 5,000 characters."
+      return false
+    }
     do {
       let edited = try await api.editMessage(id: message.id, body: body)
       guard generation == sessionGeneration else { return false }
@@ -1016,14 +1132,14 @@ final class AppModel {
       try await api.deleteMessage(id: message.id)
       guard generation == sessionGeneration else { return }
       removeMessage(message.id, roomKey: "\(message.scope):\(message.scopeId)")
-    } catch { errorMessage = error.localizedDescription }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription } }
   }
 
   func toggleReaction(_ emoji: String, on message: PWMessage) async {
     let generation = sessionGeneration
     let key = "reaction:\(message.id):\(emoji)"
     guard messageOperations.insert(key).inserted else { return }
-    defer { messageOperations.remove(key) }
+    defer { if generation == sessionGeneration { messageOperations.remove(key) } }
     do {
       let change = try await api.toggleReaction(messageID: message.id, emoji: emoji)
       guard generation == sessionGeneration else { return }
@@ -1031,7 +1147,7 @@ final class AppModel {
         messageID: change.messageId, emoji: change.emoji, count: change.count,
         added: change.added, userID: change.userId,
         preferredRoomKey: "\(message.scope):\(message.scopeId)")
-    } catch { errorMessage = error.localizedDescription }
+    } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription } }
   }
 
   func noteTyping() {
@@ -1069,16 +1185,15 @@ final class AppModel {
     defer { if generation == sessionGeneration { downloadingAttachment = false } }
     do {
       let temporary = try await api.download(url.absoluteString)
-      guard generation == sessionGeneration else { try? FileManager.default.removeItem(at: temporary); return }
+      defer { try? FileManager.default.removeItem(at: temporary) }
+      guard generation == sessionGeneration, !Task.isCancelled else { return }
       if downloadFolder == nil {
         downloadFolder = FileManager.default.temporaryDirectory.appendingPathComponent("plainwire-" + UUID().uuidString, isDirectory: true)
       }
       guard let root = downloadFolder else { return }
       let folder = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
       try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-      let filename = (name.isEmpty ? url.lastPathComponent : name as String) as NSString
-      let safeName = filename.lastPathComponent
-      let destination = folder.appendingPathComponent(safeName.isEmpty ? "Attachment" : safeName)
+      let destination = folder.appendingPathComponent(PWAttachment.safeFilename(name.isEmpty ? url.lastPathComponent : name))
       try FileManager.default.moveItem(at: temporary, to: destination)
       previewFileURL = destination
     } catch { if generation == sessionGeneration { errorMessage = error.localizedDescription } }
@@ -1118,12 +1233,12 @@ final class AppModel {
   }
 
   func presenceStatus(for user: PWUser) -> String {
-    livePresence[user.id] ?? user.status
+    livePresenceStatus(for: user) ?? "unknown"
   }
 
   func livePresenceStatus(for user: PWUser) -> String? {
     guard realtimeState == .connected else { return nil }
-    return livePresence[user.id]
+    return presence.status(for: user.id)
   }
 
   func isUsingMacApp(_ user: PWUser) -> Bool {
@@ -1132,7 +1247,7 @@ final class AppModel {
       if user.id == session?.user.id { return true }
     #endif
     return ["macos", "mac", "plainwire-apple-mac"].contains(
-      livePlatforms[user.id]?.lowercased() ?? "")
+      presence.platform(for: user.id)?.lowercased() ?? "")
   }
 
   func handleDeepLink(_ url: URL) async {
@@ -1206,8 +1321,9 @@ final class AppModel {
     for detail in serverDetails.values {
       for member in detail.members { ids.insert(member.user.id) }
     }
-    if let ownID = session?.user.id { ids.remove(ownID) }
-    await realtime.watchPresence(Array(ids.sorted().prefix(2_000)))
+    let watched = Set(ids.sorted().prefix(2_000))
+    presence.retainUsers(watched)
+    await realtime.watchPresence(Array(watched))
   }
 
   private func updateRealtimeSubscriptions() async {
@@ -1225,7 +1341,7 @@ final class AppModel {
   private func bootstrap(incremental: Bool = false) async throws {
     let generation = sessionGeneration
     let snapshot = try await api.sync(since: incremental ? lastSyncCursor : nil)
-    guard generation == sessionGeneration, !Task.isCancelled else { return }
+    guard generation == sessionGeneration, !Task.isCancelled else { throw CancellationError() }
     // A degraded sync uses empty arrays for failed panels; preserve those panels.
     let warnings = snapshot.syncWarnings.joined(separator: " ")
     if !snapshot.syncDegraded || !warnings.contains("conversations") { conversations = snapshot.conversations }
@@ -1240,9 +1356,20 @@ final class AppModel {
           .sorted { $0.id > $1.id }.prefix(120).map { $0 }
       }
     }
+    let conversationIDs = Set(conversations.map(\.id))
+    conversationDetails = conversationDetails.filter { conversationIDs.contains($0.key) }
+    for key in Array(roomMessages.keys) where key.hasPrefix("direct:") {
+      if let id = Int64(key.dropFirst(7)), !conversationIDs.contains(id) {
+        revokeRoom(key)
+        roomMessages[key] = nil
+        roomPresentations[key] = nil
+        loadedRooms.remove(key)
+      }
+    }
     let serverIDs = Set(servers.map(\.id))
     for id in Array(serverDetails.keys) where !serverIDs.contains(id) {
       for channel in serverDetails[id]?.channels ?? [] {
+        revokeRoom("channel:\(channel.id)")
         roomMessages["channel:\(channel.id)"] = nil
         roomPresentations["channel:\(channel.id)"] = nil
         loadedRooms.remove("channel:\(channel.id)")
@@ -1270,38 +1397,38 @@ final class AppModel {
       !conversations.contains(where: { $0.id == selected.roomID })
     {
       selectedRoom = nil
+      navigationRoom = nil
     }
   }
 
   private func startRealtimeTasks() {
     eventTask?.cancel()
-    stateTask?.cancel()
+    let generation = sessionGeneration
     eventTask = Task { [weak self] in
       guard let self else { return }
-      let events = await self.realtime.events()
-      for await event in events {
-        guard !Task.isCancelled else { break }
-        await self.handle(event)
-      }
-    }
-    stateTask = Task { [weak self] in
-      guard let self else { return }
-      let states = await self.realtime.states()
-      for await value in states {
-        guard !Task.isCancelled else { break }
-        self.realtimeState = value
-        if value != .connected {
-          self.livePresence = [:]
-          self.livePlatforms = [:]
+      let updates = await self.realtime.updates()
+      // Register the consumer before starting the socket so the hello and
+      // initial presence snapshot cannot be missed.
+      await self.realtime.start()
+      for await update in updates {
+        guard !Task.isCancelled, generation == self.sessionGeneration else { break }
+        switch update {
+        case .state(let state):
+          self.realtimeState = state
+          if state != .connected {
+            self.presence.reset()
+            self.typingExpiryTasks.values.forEach { $0.cancel() }
+            self.typingExpiryTasks.removeAll()
+            self.typingByRoom.removeAll()
+          }
+        case .event(let event): await self.handle(event)
         }
       }
     }
-    Task { await realtime.start() }
   }
 
   private func handle(_ event: PlainwireRealtimeEvent) async {
     guard sessionState == .ready else { return }
-    let generation = sessionGeneration
     switch event.type {
     case "hello":
       if let refreshed = event.session { session = refreshed }
@@ -1341,17 +1468,23 @@ final class AppModel {
         applyReactionChange(
           messageID: messageID, emoji: emoji, count: count, added: added, userID: userID)
       } else if let messageID = event.messageID, let room = selectedRoom {
-        await refreshMessage(messageID, room: room)
+        scheduleRealtimeWork(key: "message:\(messageID)") { model in
+          await model.refreshMessage(messageID, room: room)
+        }
       }
     case "conversation_updated", "conversation_created", "conversation_members_changed",
       "conversation_members_added", "conversation_member_removed", "realtime_resync",
       "access_revoked":
       if let id = event.conversationID, conversationDetails[id] != nil,
         event.type != "access_revoked" {
-        await loadConversationDetails(id)
+        scheduleRealtimeWork(key: "conversation:\(id)") { model in
+          await model.loadConversationDetails(id)
+        }
       }
       if event.type == "access_revoked" {
         if let id = event.conversationID {
+          revokeRoom("direct:\(id)")
+          realtimeWork.removeValue(forKey: "conversation:\(id)")?.cancel()
           conversationDetails[id] = nil
           roomMessages["direct:\(id)"] = nil
           roomPresentations["direct:\(id)"] = nil
@@ -1359,6 +1492,7 @@ final class AppModel {
           if selectedRoom?.identifier == "direct:\(id)" { selectedRoom = nil; navigationRoom = nil }
         }
         if let id = event.channelID {
+          revokeRoom("channel:\(id)")
           roomMessages["channel:\(id)"] = nil
           roomPresentations["channel:\(id)"] = nil
           loadedRooms.remove("channel:\(id)")
@@ -1370,38 +1504,40 @@ final class AppModel {
       "category_created", "category_updated", "category_deleted", "categories_reordered",
       "member_joined", "server_member_removed", "server_member_banned",
       "server_member_profile_updated", "server_member_roles_updated", "server_roles_updated":
-      if let serverID = event.payload["server_id"]?.intValue,
-        selectedServerID == serverID,
-        let updated = try? await api.server(id: serverID) {
-        guard generation == sessionGeneration else { return }
-        serverDetails[serverID] = updated
-        if let room = selectedRoom, room.scope == "channel" {
-          if let channel = updated.channels.first(where: { $0.id == room.roomID }) {
-            selectedRoom = Room(scope: "channel", roomID: channel.id, title: "# \(channel.name)",
-              subtitle: channel.topic.isEmpty ? updated.server.name : channel.topic)
-          } else { selectedRoom = nil; selectedChannelID = nil; navigationRoom = nil }
+      if let serverID = event.payload["server_id"]?.intValue, selectedServerID == serverID {
+        scheduleRealtimeWork(key: "server:\(serverID)") { model in
+          let generation = model.sessionGeneration
+          guard let updated = try? await model.api.server(id: serverID),
+            generation == model.sessionGeneration, !Task.isCancelled else { return }
+          model.serverDetails[serverID] = updated
+          if model.selectedServerID == serverID, let room = model.selectedRoom, room.scope == "channel" {
+            if let channel = updated.channels.first(where: { $0.id == room.roomID }) {
+              model.selectedRoom = Room(scope: "channel", roomID: channel.id, title: "# \(channel.name)",
+                subtitle: channel.topic.isEmpty ? updated.server.name : channel.topic)
+            } else { model.selectedRoom = nil; model.selectedChannelID = nil; model.navigationRoom = nil }
+          }
+          await model.updatePresenceWatch()
         }
       }
       scheduleSync(delay: .milliseconds(250))
-    case "presence_state":
-      for (id, status) in event.statuses {
-        livePresence[id] = status
-        livePlatforms[id] = event.platforms[id]
-      }
-    case "presence_online", "presence_status":
-      if let userID = event.userID, let status = event.status {
-        livePresence[userID] = status
-        livePlatforms[userID] = event.platform
-      }
-    case "presence_offline":
-      if let userID = event.userID {
-        livePresence[userID] = "offline"
-        livePlatforms[userID] = nil
-      }
+    case "presence_state", "presence_online", "presence_status", "presence_offline":
+      presence.apply(event)
     case "typing":
       handleTyping(event)
     case "account_deleted": await logout()
     default: break
+    }
+  }
+
+  // Detail fetches must not stall the event consumer and delay offline/typing events.
+  private func scheduleRealtimeWork(key: String, operation: @escaping @MainActor (AppModel) async -> Void) {
+    realtimeWork[key]?.cancel()
+    let generation = sessionGeneration
+    realtimeWork[key] = Task { [weak self] in
+      try? await Task.sleep(for: .milliseconds(250))
+      guard let self, generation == self.sessionGeneration, !Task.isCancelled else { return }
+      defer { if !Task.isCancelled, generation == self.sessionGeneration { self.realtimeWork[key] = nil } }
+      await operation(self)
     }
   }
 
@@ -1484,16 +1620,17 @@ final class AppModel {
   private func refreshMessage(_ id: PlainwireID, room: Room) async {
     guard let before = roomMessages[room.identifier]?.first(where: { $0.id == id }) else { return }
     let generation = sessionGeneration
+    let revision = roomRevisions[room.identifier, default: 0]
     do {
       let fresh = try await api.messages(scope: room.scope, id: room.roomID, after: max(0, id - 1))
-      guard generation == sessionGeneration,
+      guard generation == sessionGeneration, revision == roomRevisions[room.identifier, default: 0],
         roomMessages[room.identifier]?.first(where: { $0.id == id }) == before else { return }
       if let replacement = fresh.first(where: { $0.id == id }) { upsert(replacement, in: room.identifier) }
     } catch {}
   }
 
   private func upsert(_ message: PWMessage, in roomKey: String) {
-    guard deletedMessages[message.id] == nil else { return }
+    guard deletedMessages[message.id] == nil, !revokedRooms.contains(roomKey) else { return }
     var list = roomMessages[roomKey] ?? []
     if contextRooms.contains(roomKey), !list.contains(where: { $0.id == message.id }) { return }
     if let index = list.firstIndex(where: { $0.id == message.id }) {
@@ -1513,8 +1650,19 @@ final class AppModel {
     setMessages(list, roomKey: roomKey)
   }
 
+  private func revokeRoom(_ roomKey: String) {
+    revokedRooms.insert(roomKey)
+    roomRevisions[roomKey, default: 0] += 1
+  }
+
   private func setMessages(_ messages: [PWMessage], roomKey: String) {
-    let messages = messages.filter { deletedMessages[$0.id] == nil && $0.deletedAt == nil }
+    guard !revokedRooms.contains(roomKey) else { return }
+    var messages = deduplicated(messages).filter { deletedMessages[$0.id] == nil && $0.deletedAt == nil }
+    // Keep history while it is being read; bound live tails and inactive rooms.
+    if messages.count > 1000, selectedRoom?.identifier != roomKey || readingRoomID == roomKey {
+      messages = Array(messages.suffix(1000))
+      reachedBeginning.remove(roomKey)
+    }
     let previousPresentations = roomPresentations[roomKey] ?? []
     roomMessages[roomKey] = messages
     roomPresentations[roomKey] = buildPresentations(messages, reusing: previousPresentations)
@@ -1561,7 +1709,7 @@ final class AppModel {
       if let previous {
         startsGroup =
           startsDay || previous.userId != message.userId
-          || message.createdAt - previous.createdAt > 5 * 60 * 1000
+          || Double(message.createdAt) - Double(previous.createdAt) > 5 * 60 * 1000
       } else {
         startsGroup = true
       }

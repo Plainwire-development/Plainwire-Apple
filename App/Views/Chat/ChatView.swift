@@ -492,7 +492,7 @@ struct ChatView: View {
               savingEdit = false
             }
           }
-          .disabled(savingEdit || editText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+          .disabled(savingEdit || editText.utf16.count > 5000 || editText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
       }
     }
@@ -503,9 +503,9 @@ struct ChatView: View {
   private var rowsAreEmpty: Bool { model.messagePresentationsForSelectedRoom().isEmpty }
 
   private func send() {
-    guard !sending, !uploading, let room = model.selectedRoom else { return }
+    guard !sending, !uploading, model.canSendInSelectedRoom, let room = model.selectedRoom else { return }
     let outgoing = model.drafts[room.identifier] ?? ""
-    guard !outgoing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+    guard !outgoing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, outgoing.utf16.count <= 5000 else { return }
     let reply = replyingTo
     let accountID = model.session?.user.id
     let csrf = model.session?.csrf

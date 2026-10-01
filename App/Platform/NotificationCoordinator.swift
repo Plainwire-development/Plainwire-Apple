@@ -14,6 +14,7 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
   private var configured = false
   private var openHandler: ((URL) -> Void)?
   private var notifiedMessageIDs = Set<PlainwireID>()
+  private var notifiedMessageOrder: [PlainwireID] = []
 
   func configure(openHandler: @escaping (URL) -> Void) {
     self.openHandler = openHandler
@@ -39,7 +40,10 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
       !(applicationIsActive && selectedRoom == messageRoom)
     else { return }
     guard notifiedMessageIDs.insert(message.id).inserted else { return }
-    if notifiedMessageIDs.count > 512 { notifiedMessageIDs = [message.id] }
+    notifiedMessageOrder.append(message.id)
+    if notifiedMessageOrder.count > 512 {
+      notifiedMessageIDs.remove(notifiedMessageOrder.removeFirst())
+    }
 
     let defaults = UserDefaults.standard
     let showsPreview = defaults.bool(forKey: AppPreferenceKeys.notificationPreviews)
@@ -64,6 +68,13 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
     Task {
       try? await UNUserNotificationCenter.current().setBadgeCount(count)
     }
+  }
+
+  func clearSessionNotifications() {
+    notifiedMessageIDs.removeAll()
+    notifiedMessageOrder.removeAll()
+    UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+    UNUserNotificationCenter.current().removeAllDeliveredNotifications()
   }
 
   nonisolated func userNotificationCenter(

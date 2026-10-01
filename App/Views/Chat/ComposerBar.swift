@@ -101,7 +101,7 @@ struct ComposerBar: View {
           }
           .adaptiveGlassButton()
           .controlSize(.small)
-          .disabled(uploading)
+          .disabled(uploading || !model.canSendInSelectedRoom)
           .accessibilityLabel(uploading ? "Uploading attachments" : "Attach files")
 
           TextField("Message \(model.selectedRoom?.title ?? "")", text: $text, axis: .vertical)
@@ -115,7 +115,7 @@ struct ComposerBar: View {
             .disabled(!model.canSendInSelectedRoom)
             .onSubmit {
               if let first = mentionCandidates.first { insertMention(first.username) }
-              else if !sending && !uploading { onSend() }
+              else if !sending && !uploading && model.canSendInSelectedRoom && text.utf16.count <= 5000 { onSend() }
             }
 
           Button(action: onSend) {
@@ -125,7 +125,7 @@ struct ComposerBar: View {
           }
           .adaptiveGlassButton(prominent: true)
           .controlSize(.small)
-          .disabled(trimmedText.isEmpty || uploading || sending || !model.canSendInSelectedRoom)
+          .disabled(trimmedText.isEmpty || text.utf16.count > 5000 || uploading || sending || !model.canSendInSelectedRoom)
           .accessibilityLabel("Send message")
           .keyboardShortcut(.return, modifiers: [.command])
         }

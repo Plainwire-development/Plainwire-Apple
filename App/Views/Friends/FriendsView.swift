@@ -184,6 +184,9 @@ private struct FriendRow: View {
           .font(.caption)
           .foregroundStyle(.secondary)
           .lineLimit(1)
+        if !requestActions {
+          Text(statusLabel).font(.caption2).foregroundStyle(.secondary)
+        }
       }
       Spacer(minLength: 10)
       Button { showingProfile = true } label: {
@@ -237,6 +240,16 @@ private struct FriendRow: View {
     default: .secondary.opacity(0.65)
     }
   }
+
+  private var statusLabel: String {
+    switch model.presenceStatus(for: friend.user) {
+    case "online": "Online"
+    case "away": "Away"
+    case "busy": "Busy"
+    case "offline": "Offline"
+    default: "Presence unavailable"
+    }
+  }
 }
 
 struct PersonProfileSheet: View {
@@ -252,9 +265,10 @@ struct PersonProfileSheet: View {
         if let user = profile?.user {
           VStack(alignment: .leading, spacing: 18) {
             if let banner = model.mediaURL(user.bannerURL) {
-              AsyncImage(url: banner) { image in
-                image.resizable().scaledToFill()
-              } placeholder: { Color.secondary.opacity(0.12) }
+              CachedRemoteImage(url: banner, pixelSize: 1200) { phase in
+                if case .success(let image) = phase { image.resizable().scaledToFill() }
+                else { Color.secondary.opacity(0.12) }
+              }
               .frame(height: 135).clipped().cornerRadius(16)
             }
             HStack(spacing: 16) {
@@ -265,10 +279,8 @@ struct PersonProfileSheet: View {
                 Text("@\(user.username)").foregroundStyle(.secondary)
               }
             }
-            if !user.status.isEmpty {
-              Label(user.status, systemImage: "bubble.left")
-                .font(.subheadline)
-            }
+            Label(model.livePresenceStatus(for: user)?.capitalized ?? "Presence unavailable", systemImage: "circle.fill")
+              .font(.subheadline).foregroundStyle(.secondary)
             if !user.bio.isEmpty { Text(user.bio).textSelection(.enabled) }
             Text("Joined \(Date(timeIntervalSince1970: TimeInterval(user.createdAt) / 1000).formatted(date: .abbreviated, time: .omitted))")
               .font(.caption).foregroundStyle(.secondary)

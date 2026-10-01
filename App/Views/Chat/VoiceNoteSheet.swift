@@ -113,9 +113,11 @@ struct VoiceNoteSheet: View {
           .foregroundStyle(recorder.recording ? Color.red : Color.accentColor)
           .frame(width: 100, height: 100)
           .background(.primary.opacity(0.045), in: Circle())
-        TimelineView(.periodic(from: .now, by: 0.25)) { _ in
-          Text(timerText).font(.system(.title, design: .monospaced).weight(.medium))
-        }
+        Group {
+          if recorder.recording {
+            TimelineView(.periodic(from: .now, by: 0.25)) { _ in Text(timerText) }
+          } else { Text(timerText) }
+        }.font(.system(.title, design: .monospaced).weight(.medium))
         Text(recorder.recording ? "Recording · up to 2 minutes" : "Voice note for \(room.title)")
           .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
         if let error = recorder.error { Text(error).font(.callout).foregroundStyle(.red).multilineTextAlignment(.center) }

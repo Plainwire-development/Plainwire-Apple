@@ -176,10 +176,19 @@ final class RemoteImageStore {
   static let shared = RemoteImageStore()
 
   private let cache = NSCache<NSString, PlatformImage>()
+  private let session: URLSession
+  private let transferDelegate = PlainwireTransferDelegate(
+    configuration: PlainwireConfiguration(), maximumBytes: 32 * 1024 * 1024)
   private var pending: [String: Task<PlatformImage?, Never>] = [:]
   private var generation = 0
 
   private init() {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.httpCookieStorage = .shared
+    configuration.timeoutIntervalForRequest = 15
+    configuration.timeoutIntervalForResource = 45
+    configuration.httpMaximumConnectionsPerHost = 4
+    session = URLSession(configuration: configuration, delegate: transferDelegate, delegateQueue: nil)
     cache.countLimit = 240
     cache.totalCostLimit = 96 * 1024 * 1024
   }
@@ -192,6 +201,7 @@ final class RemoteImageStore {
   }
 
   func image(for url: URL, pixelSize: Int) async -> PlatformImage? {
+    let pixelSize = min(1600, max(64, pixelSize))
     let key = "\(url.absoluteString)#\(pixelSize)"
     if let cached = cache.object(forKey: key as NSString) { return cached }
     if let current = pending[key] {
@@ -203,18 +213,28 @@ final class RemoteImageStore {
 
     let task = Task<PlatformImage?, Never> {
       do {
-        let (data, response) = try await URLSession.shared.data(from: url)
-        guard !Task.isCancelled, data.count <= 32 * 1024 * 1024,
+        // Download to disk with a transfer limit before decoding; a remote image
+        // must not allocate an unbounded Data buffer on the main actor.
+        let (file, response) = try await transferDelegate.download(URLRequest(url: url), using: session)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let size = (try file.resourceValues(forKeys: [.fileSizeKey])).fileSize ?? 0
+        guard !Task.isCancelled, size > 0, size <= 32 * 1024 * 1024,
           (response as? HTTPURLResponse)?.statusCode == 200
         else { return nil }
         let decoded = await Task.detached(priority: .utility) { () -> DecodedRemoteImage? in
           let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceThumbnailMaxPixelSize: max(64, pixelSize),
+            kCGImageSourceThumbnailMaxPixelSize: pixelSize,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceShouldCacheImmediately: true,
           ]
-          guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+          guard let data = try? Data(contentsOf: file, options: .mappedIfSafe),
+            let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+            let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue,
+            let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue,
+            width.isFinite, height.isFinite, width > 0, height > 0,
+            width <= 20_000, height <= 20_000, width * height <= 64_000_000,
             let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
           else { return nil }
           return DecodedRemoteImage(image: image)

@@ -457,9 +457,10 @@ private struct ProfileEditorSheet: View {
             Button("Choose avatar") { imageField = "avatar"; pickingImage = true }
           }
           if let url = model.mediaURL(bannerURL) {
-            AsyncImage(url: url) { image in
-              image.resizable().scaledToFill()
-            } placeholder: { Color.secondary.opacity(0.12) }
+            CachedRemoteImage(url: url, pixelSize: 1200) { phase in
+              if case .success(let image) = phase { image.resizable().scaledToFill() }
+              else { Color.secondary.opacity(0.12) }
+            }
             .frame(height: 110).clipped().cornerRadius(12)
           }
           Button("Choose banner") { imageField = "banner"; pickingImage = true }

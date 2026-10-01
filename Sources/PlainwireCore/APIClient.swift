@@ -9,12 +9,18 @@ public actor PlainwireAPIClient {
 
   private let configuration: PlainwireConfiguration
   private let session: URLSession
+  private let downloadDelegate: PlainwireTransferDelegate
   private var csrfToken: String?
+  private var authenticationGeneration = 0
 
   public init(
     configuration: PlainwireConfiguration = PlainwireConfiguration(), session: URLSession? = nil
   ) {
     self.configuration = configuration
+    let delegate = PlainwireTransferDelegate(configuration: configuration,
+      maximumBytes: Self.defaultUploadLimit, restrictToOrigin: true)
+    downloadDelegate = PlainwireTransferDelegate(configuration: configuration,
+      maximumBytes: Self.defaultUploadLimit)
     if let session {
       self.session = session
     } else {
@@ -26,13 +32,12 @@ public actor PlainwireAPIClient {
       #endif
       config.httpCookieAcceptPolicy = .always
       config.httpCookieStorage = .shared
-      config.urlCache = URLCache(
-        memoryCapacity: 16 * 1024 * 1024, diskCapacity: 96 * 1024 * 1024, diskPath: nil)
-      config.requestCachePolicy = .useProtocolCachePolicy
+      config.urlCache = nil
+      config.requestCachePolicy = .reloadIgnoringLocalCacheData
       config.httpAdditionalHeaders = [
         "Accept": "application/json", "User-Agent": PlainwireClientInfo.userAgent,
       ]
-      self.session = URLSession(configuration: config)
+      self.session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
     }
   }
 
@@ -47,6 +52,7 @@ public actor PlainwireAPIClient {
 
   @discardableResult
   public func login(username: String, password: String) async throws -> PWSession {
+    authenticationGeneration += 1
     let body = LoginRequest(username: username, password: password)
     let result: PWSession = try await request(
       method: "POST", path: "login", body: body, requiresCSRF: false)
@@ -58,6 +64,7 @@ public actor PlainwireAPIClient {
   public func register(username: String, displayName: String, password: String) async throws
     -> PWSession
   {
+    authenticationGeneration += 1
     let body = RegisterRequest(username: username, displayName: displayName, password: password)
     let result: PWSession = try await request(
       method: "POST", path: "register", body: body, requiresCSRF: false)
@@ -66,8 +73,10 @@ public actor PlainwireAPIClient {
   }
 
   public func logout() async throws {
+    authenticationGeneration += 1
     defer {
       csrfToken = nil
+      session.configuration.urlCache?.removeAllCachedResponses()
       let cookies = HTTPCookieStorage.shared.cookies(for: configuration.baseURL) ?? []
       for cookie in cookies where cookie.name == "pw_session" {
         HTTPCookieStorage.shared.deleteCookie(cookie)
@@ -317,6 +326,7 @@ public actor PlainwireAPIClient {
     fileURL: URL, contentType: String = "application/octet-stream",
     maxBytes: Int64 = defaultUploadLimit
   ) async throws -> PWUpload {
+    let generation = authenticationGeneration
     let values = try fileURL.resourceValues(forKeys: [.fileSizeKey, .nameKey, .isRegularFileKey])
     guard values.isRegularFile == true, let sizeValue = values.fileSize else {
       throw PlainwireAPIError.invalidFile
@@ -337,7 +347,11 @@ public actor PlainwireAPIClient {
 
     do {
       let (data, response) = try await session.upload(for: request, fromFile: fileURL)
+      try Task.checkCancellation()
+      guard generation == authenticationGeneration else { throw CancellationError() }
       return try decodeEnvelope(PWUpload.self, data: data, response: response)
+    } catch is CancellationError {
+      throw CancellationError()
     } catch let error as PlainwireAPIError {
       throw error
     } catch {
@@ -348,20 +362,24 @@ public actor PlainwireAPIClient {
   public func resolveMediaURL(_ value: String) -> URL? { configuration.mediaURL(value) }
 
   public func download(_ value: String) async throws -> URL {
+    let generation = authenticationGeneration
     guard let url = configuration.mediaURL(value) else { throw PlainwireAPIError.invalidURL }
-    let (temporary, response) = try await session.download(from: url)
+    let (temporary, response) = try await downloadDelegate.download(URLRequest(url: url), using: session)
+    var keepFile = false
+    defer { if !keepFile { try? FileManager.default.removeItem(at: temporary) } }
+    try Task.checkCancellation()
+    guard generation == authenticationGeneration else { throw CancellationError() }
     let http = try validatedHTTP(response)
     guard (200..<300).contains(http.statusCode) else {
-      try? FileManager.default.removeItem(at: temporary)
       if http.statusCode == 401 { throw PlainwireAPIError.notAuthenticated }
       throw PlainwireAPIError.server(status: http.statusCode,
         code: HTTPURLResponse.localizedString(forStatusCode: http.statusCode), message: nil)
     }
     let size = (try? FileManager.default.attributesOfItem(atPath: temporary.path)[.size] as? NSNumber)?.int64Value ?? 0
     guard size <= Self.defaultUploadLimit else {
-      try? FileManager.default.removeItem(at: temporary)
       throw PlainwireAPIError.uploadTooLarge(size)
     }
+    keepFile = true
     return temporary
   }
 
@@ -400,6 +418,7 @@ public actor PlainwireAPIClient {
   private func requestAllowingEmpty<T: Decodable & Sendable, Body: Encodable & Sendable>(
     method: String, path: String, query: [URLQueryItem] = [], body: Body?, requiresCSRF: Bool = true
   ) async throws -> T? {
+    let generation = authenticationGeneration
     var request = URLRequest(
       url: try configuration.apiURL(path, query: query), cachePolicy: .reloadIgnoringLocalCacheData)
     request.httpMethod = method
@@ -416,6 +435,8 @@ public actor PlainwireAPIClient {
 
     do {
       let (data, response) = try await session.data(for: request)
+      try Task.checkCancellation()
+      guard generation == authenticationGeneration else { throw CancellationError() }
       let http = try validatedHTTP(response)
       if http.statusCode == 401 {
         let error = decodeServerError(data: data, status: http.statusCode)
@@ -441,6 +462,8 @@ public actor PlainwireAPIClient {
         return try decodeEnvelopeOptional(T.self, data: data, response: response)
       }
       throw decodeServerError(data: data, status: http.statusCode)
+    } catch is CancellationError {
+      throw CancellationError()
     } catch let error as PlainwireAPIError {
       throw error
     } catch let error as DecodingError {

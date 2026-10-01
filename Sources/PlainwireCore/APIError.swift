@@ -21,7 +21,7 @@ public enum PlainwireAPIError: Error, LocalizedError, Equatable, Sendable {
     case .decoding(let field):
       return "Unable to read the Plainwire response (\(field)). Refresh to try again."
     case .transport(let message): return message
-    case .uploadTooLarge(let bytes): return "This file is too large to upload (\(bytes) bytes)."
+    case .uploadTooLarge(let bytes): return "This file is too large (\(bytes) bytes)."
     case .invalidFile: return "The selected file could not be read."
     }
   }

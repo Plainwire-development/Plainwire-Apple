@@ -1,5 +1,4 @@
 import SwiftUI
-import AVKit
 
 struct MessageRow: View {
   @Environment(AppModel.self) private var model
@@ -345,55 +344,59 @@ private struct AttachmentImage: View {
 private struct VideoAttachment: View {
   let name: String
   let url: URL?
-  @State private var player: AVPlayer?
+  @Environment(\.scenePhase) private var scenePhase
+  @State private var playback = MediaPlayback()
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 7) {
-      if let player {
-        VideoPlayer(player: player)
-          .frame(maxWidth: 520)
-          .frame(height: 292)
-          .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-          .accessibilityLabel(name.isEmpty ? "Video attachment" : name)
-      } else {
-        Button {
-          guard let url else { return }
-          let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPCookiesKey": HTTPCookieStorage.shared.cookies(for: url) ?? []])
-          let next = AVPlayer(playerItem: AVPlayerItem(asset: asset))
-          next.automaticallyWaitsToMinimizeStalling = false
-          player = next
-          next.play()
-        } label: {
-          ZStack {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-              .fill(Color.accentColor.opacity(0.09))
-            Image(systemName: "play.circle.fill")
-              .font(.system(size: 48))
-              .foregroundStyle(Color.accentColor)
+    VStack(alignment: .leading, spacing: 8) {
+      ZStack {
+        if let player = playback.player {
+          NativeVideoPlayer(player: player)
+            .overlay {
+              if playback.loading { ProgressView().tint(.white).allowsHitTesting(false) }
+            }
+        } else {
+          Button {
+            if let url { playback.load(url) }
+          } label: {
+            ZStack {
+              RoundedRectangle(cornerRadius: 16).fill(Color.accentColor.opacity(0.09))
+              VStack(spacing: 8) {
+                if playback.loading { ProgressView() }
+                else {
+                  Image(systemName: playback.error == nil ? "play.circle.fill" : "arrow.clockwise.circle.fill")
+                    .font(.system(size: 44)).foregroundStyle(Color.accentColor)
+                }
+                Text(playback.loading ? "Loading video…" : url == nil ? "Video unavailable" : playback.error == nil ? "Play video" : "Retry video")
+                  .font(.caption.weight(.medium)).foregroundStyle(.secondary)
+              }
+            }
           }
-          .frame(maxWidth: 520)
-          .frame(height: 190)
+          .buttonStyle(.plain)
+          .disabled(url == nil || playback.loading)
+          .accessibilityLabel("Play video: \(name)")
         }
-        .buttonStyle(.plain)
-        .disabled(url == nil)
-        .accessibilityLabel("Play video: \(name)")
       }
+      .aspectRatio(16.0 / 9.0, contentMode: .fit)
+      .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+      .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.primary.opacity(0.08), lineWidth: 0.5))
+      .accessibilityLabel(name.isEmpty ? "Video attachment" : name)
+      if let error = playback.error { Text(error).font(.caption).foregroundStyle(.secondary) }
       HStack(spacing: 8) {
         Image(systemName: "film").foregroundStyle(Color.accentColor)
         Text(name.isEmpty ? "Video" : name).lineLimit(1)
         Spacer(minLength: 8)
         if let url {
-          Link(destination: url) {
-            Image(systemName: "arrow.up.right.square")
-          }
-          .accessibilityLabel("Open video in browser")
+          Link(destination: url) { Image(systemName: "arrow.up.right.square") }
+            .accessibilityLabel("Open video in browser")
         }
       }
-      .font(.caption.weight(.medium))
-      .foregroundStyle(.secondary)
+      .font(.caption.weight(.medium)).foregroundStyle(.secondary)
     }
     .frame(maxWidth: 520, alignment: .leading)
-    .onDisappear { player?.pause() }
+    .onDisappear { playback.reset() }
+    .onChange(of: url) { _, _ in playback.reset() }
+    .onChange(of: scenePhase) { _, phase in if phase != .active { playback.pause() } }
   }
 }
 
@@ -562,64 +565,46 @@ private struct MessageBodyView: View {
 private struct AudioAttachment: View {
   let name: String
   let url: URL?
-  @State private var player: AVPlayer?
-  @State private var duration: Double = 0
-  @State private var loading = false
-  @State private var error: String?
+  @Environment(\.scenePhase) private var scenePhase
+  @State private var playback = MediaPlayback()
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      TimelineView(.periodic(from: .now, by: 0.5)) { _ in
-        HStack(spacing: 12) {
-          Button {
-            if let player {
-              if player.rate > 0 { player.pause() }
-              else {
-                if duration > 0 && player.currentTime().seconds >= duration - 0.1 { player.seek(to: .zero) }
-                player.play()
-              }
-            } else { Task { await play() } }
-          } label: {
-            Image(systemName: player?.rate ?? 0 > 0 ? "pause.fill" : "play.fill")
-              .font(.headline).frame(width: 36, height: 36)
-              .foregroundStyle(Color.accentColor)
-              .background(Color.accentColor.opacity(0.12), in: Circle())
-          }.buttonStyle(.plain).disabled(url == nil || loading).accessibilityLabel("Play or pause voice note")
-          VStack(alignment: .leading, spacing: 6) {
-            Text(name.isEmpty ? "Voice note" : name).font(.subheadline.weight(.medium)).lineLimit(1)
-            ProgressView(value: progress).tint(.accentColor)
-            Text(loading ? "Loading…" : "\(timestamp(player?.currentTime().seconds ?? 0)) / \(timestamp(duration))")
-              .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+      HStack(spacing: 12) {
+        Button {
+          if playback.player != nil { playback.togglePlayback() }
+          else if let url { playback.load(url, audio: true) }
+        } label: {
+          Group {
+            if playback.loading { ProgressView().controlSize(.small) }
+            else { Image(systemName: playback.playing ? "pause.fill" : "play.fill").font(.headline) }
           }
+          .frame(width: 36, height: 36)
+          .foregroundStyle(Color.accentColor)
+          .background(Color.accentColor.opacity(0.12), in: Circle())
+        }
+        .buttonStyle(.plain).disabled(url == nil || playback.loading)
+        .accessibilityLabel(playback.playing ? "Pause voice note" : "Play voice note")
+        VStack(alignment: .leading, spacing: 6) {
+          Text(name.isEmpty ? "Voice note" : name).font(.subheadline.weight(.medium)).lineLimit(1)
+          ProgressView(value: playback.progress).tint(.accentColor)
+          Text(playback.loading ? "Loading…" : "\(timestamp(playback.elapsed)) / \(timestamp(playback.duration))")
+            .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
         }
       }
-      if let error { Text(error).font(.caption).foregroundStyle(.secondary) }
+      if let error = playback.error {
+        Text(error).font(.caption).foregroundStyle(.secondary)
+        if let url { Link("Open voice note in browser", destination: url).font(.caption) }
+      }
     }
     .padding(12).frame(maxWidth: 420)
     .background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 16))
-    .onDisappear { player?.pause() }
-  }
-  private var progress: Double {
-    guard duration.isFinite, duration > 0, let time = player?.currentTime().seconds, time.isFinite else { return 0 }
-    return min(1, max(0, time / duration))
+    .onDisappear { playback.reset() }
+    .onChange(of: url) { _, _ in playback.reset() }
+    .onChange(of: scenePhase) { _, phase in if phase != .active { playback.pause() } }
   }
   private func timestamp(_ value: Double) -> String {
     guard value.isFinite, value >= 0 else { return "0:00" }
     let seconds = Int(min(value, 86400))
     return String(format: "%d:%02d", seconds / 60, seconds % 60)
-  }
-  private func play() async {
-    guard let url else { return }
-    loading = true
-    error = nil
-    defer { loading = false }
-    let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPCookiesKey": HTTPCookieStorage.shared.cookies(for: url) ?? []])
-    do {
-      let length = try await asset.load(.duration).seconds
-      guard !Task.isCancelled else { return }
-      duration = length.isFinite ? length : 0
-      let next = AVPlayer(playerItem: AVPlayerItem(asset: asset))
-      player = next
-      next.play()
-    } catch { self.error = "Unable to play this voice note. Try again." }
   }
 }

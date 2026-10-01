@@ -128,4 +128,18 @@ public struct PWAttachment: Hashable, Identifiable, Sendable {
   public let kind: Kind
   public let isSpoiler: Bool
   public var id: String { "\(kind):\(url):\(name):\(isSpoiler)" }
+
+  public static func safeFilename(_ value: String) -> String {
+    let leaf = (value.replacingOccurrences(of: "\\", with: "/") as NSString).lastPathComponent
+    let cleaned = leaf.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }
+    let name = String(String.UnicodeScalarView(cleaned)).trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !name.isEmpty, name != ".", name != ".." else { return "Attachment" }
+    // Filesystem names are limited in bytes; preserve a useful extension.
+    guard name.utf8.count > 240 else { return name }
+    let ext = String((name as NSString).pathExtension.prefix(20))
+    let suffix = ext.isEmpty ? "" : "." + ext
+    var stem = (name as NSString).deletingPathExtension
+    while stem.utf8.count + suffix.utf8.count > 240 { stem.removeLast() }
+    return stem + suffix
+  }
 }

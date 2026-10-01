@@ -35,7 +35,7 @@ public struct PWUser: Codable, Hashable, Identifiable, Sendable {
     bio = try c.decodeIfPresent(String.self, forKey: .bio) ?? ""
     avatarURL = try c.decodeIfPresent(String.self, forKey: .avatarURL) ?? ""
     bannerURL = try c.decodeIfPresent(String.self, forKey: .bannerURL) ?? ""
-    status = try c.decodeIfPresent(String.self, forKey: .status) ?? "online"
+    status = try c.decodeIfPresent(String.self, forKey: .status) ?? "offline"
     theme = try c.decodeIfPresent(String.self, forKey: .theme) ?? "system"
     createdAt = try c.optionalWireInteger(Int64.self, forKey: .createdAt) ?? 0
     lastSeen = try c.optionalWireInteger(Int64.self, forKey: .lastSeen) ?? 0

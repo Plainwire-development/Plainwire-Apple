@@ -90,7 +90,10 @@ import Testing
   let config = PlainwireConfiguration(baseURL: URL(string: "https://plainwire.example")!)
   #expect(config.mediaURL("https://user:pass@cdn.example/avatar.png") == nil)
   #expect(config.mediaURL("http://cdn.example/avatar.png") == nil)
-  #expect(config.mediaURL("http://127.0.0.1:8080/avatar.png")?.scheme == "http")
+  #expect(config.mediaURL("http://127.0.0.1:8080/avatar.png") == nil)
+  let local = PlainwireConfiguration(baseURL: URL(string: "http://127.0.0.1:8080")!)
+  #expect(local.mediaURL("/avatar.png")?.scheme == "http")
+  #expect(local.mediaURL("http://127.0.0.1:9090/avatar.png") == nil)
 }
 
 @Test func reactionEventAccessorsMatchBackendWireShape() throws {

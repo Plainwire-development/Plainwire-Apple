@@ -65,17 +65,24 @@ public struct PlainwireConfiguration: Hashable, Sendable {
     return isAllowedMediaURL(relative) ? relative : nil
   }
 
+  public func isSameOrigin(_ url: URL) -> Bool {
+    let port = url.port ?? (url.scheme?.lowercased() == "https" ? 443 : 80)
+    let basePort = baseURL.port ?? (baseURL.scheme?.lowercased() == "https" ? 443 : 80)
+    return url.scheme?.lowercased() == baseURL.scheme?.lowercased()
+      && url.host?.lowercased() == baseURL.host?.lowercased() && port == basePort
+      && url.user == nil && url.password == nil
+  }
+
   private func isAllowedMediaURL(_ url: URL) -> Bool {
     guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
       components.user == nil, components.password == nil,
-      let scheme = components.scheme?.lowercased(), let host = components.host?.lowercased()
+      let scheme = components.scheme?.lowercased(), components.host != nil
     else { return false }
 
     if scheme == "https" { return true }
     guard scheme == "http" else { return false }
 
-    let baseHost = baseURL.host?.lowercased()
-    return host == "localhost" || host == "127.0.0.1"
-      || (baseURL.scheme == "http" && host == baseHost)
+    // Remote messages must not initiate plaintext requests to local services.
+    return baseURL.scheme == "http" && isSameOrigin(url)
   }
 }

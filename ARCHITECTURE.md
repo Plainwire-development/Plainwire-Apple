@@ -12,11 +12,15 @@ The Workspace tab uses an ephemeral `WKWebView`. Before loading the web client, 
 
 Realtime events update messages, reactions, typing, and presence. After a disconnect, the socket reconnects, restores subscriptions, and syncs with the server. The server remains the source of truth.
 
+The native model consumes connection states and events through one ordered stream. Presence uses only the current socket's snapshots and updates; saved profile status is never evidence that someone is connected. Hello and pong deadlines detect silent connections. Detail requests are coalesced separately so they cannot delay presence or typing events.
+
 ## Chat and media
 
 Messages use `LazyVStack`. Drafts are keyed by room, saved per account with debounced writes, restored after relaunch, and removed on sign-out. Sends and uploads capture their original room. Session generations discard old asynchronous results; bounded deletion records keep overlapping fetches from restoring removed messages. Parsed Markdown, attachments, and timestamps are reused until message content changes. New messages scroll into view only when the reader is near the bottom. Loading older messages keeps the previous first row in place.
 
 Uploads stream from file URLs. Attachment Markdown is separated from visible message text. `||attachment||` hides that attachment until the reader reveals it. Images and avatars use a bounded memory cache and thumbnails decoded in a utility task. Attachment extraction and code/spoiler parsing live in the portable core and have regression tests. Authenticated downloads are staged in a session-specific temporary folder for Quick Look and removed on sign-out. Video playback starts when tapped.
+
+AVKit platform views provide video controls directly. A shared playback owner cancels preparation, removes observers, and releases media when rows disappear. Voice-note progress updates run only during playback. Images use delegate-owned disk downloads with transfer and dimension limits before decoding. API responses are not cached to disk, and API redirects must remain on the configured origin.
 
 ## Platforms and notifications
 

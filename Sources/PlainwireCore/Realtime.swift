@@ -12,6 +12,11 @@ public enum PlainwireRealtimeState: Equatable, Sendable {
   case failed(String)
 }
 
+public enum PlainwireRealtimeUpdate: Sendable {
+  case state(PlainwireRealtimeState)
+  case event(PlainwireRealtimeEvent)
+}
+
 public struct PlainwireRealtimeEvent: Sendable, Hashable {
   public let type: String
   public let payload: [String: JSONValue]
@@ -70,6 +75,8 @@ public actor PlainwireRealtimeClient {
   private var receiveTask: Task<Void, Never>?
   private var reconnectTask: Task<Void, Never>?
   private var heartbeatTask: Task<Void, Never>?
+  private var connectionDeadlineTask: Task<Void, Never>?
+  private var pendingPingID: UUID?
   private var shouldRun = false
   private var attempt = 0
   private var desiredSubscriptions = Set<String>()
@@ -77,6 +84,7 @@ public actor PlainwireRealtimeClient {
 
   private var eventContinuations: [UUID: AsyncStream<PlainwireRealtimeEvent>.Continuation] = [:]
   private var stateContinuations: [UUID: AsyncStream<PlainwireRealtimeState>.Continuation] = [:]
+  private var updateContinuations: [UUID: AsyncStream<PlainwireRealtimeUpdate>.Continuation] = [:]
   private(set) public var state: PlainwireRealtimeState = .stopped
 
   public init(
@@ -117,6 +125,18 @@ public actor PlainwireRealtimeClient {
     }
   }
 
+  /// Keeps disconnects and presence snapshots in order for UI consumers.
+  public func updates() -> AsyncStream<PlainwireRealtimeUpdate> {
+    AsyncStream(bufferingPolicy: .bufferingNewest(512)) { continuation in
+      let id = UUID()
+      updateContinuations[id] = continuation
+      continuation.yield(.state(state))
+      continuation.onTermination = { [weak self] _ in
+        Task { await self?.removeUpdateContinuation(id) }
+      }
+    }
+  }
+
   public func start() {
     guard !shouldRun else { return }
     shouldRun = true
@@ -130,6 +150,9 @@ public actor PlainwireRealtimeClient {
     reconnectTask = nil
     heartbeatTask?.cancel()
     heartbeatTask = nil
+    connectionDeadlineTask?.cancel()
+    connectionDeadlineTask = nil
+    pendingPingID = nil
     receiveTask?.cancel()
     receiveTask = nil
     webSocket?.cancel(with: .goingAway, reason: nil)
@@ -193,7 +216,14 @@ public actor PlainwireRealtimeClient {
     request.setValue(PlainwireClientInfo.platform, forHTTPHeaderField: "X-Plainwire-Client-Platform")
     let socket = session.webSocketTask(with: request)
     webSocket = socket
+    socket.maximumMessageSize = 4 * 1024 * 1024
     socket.resume()
+    connectionDeadlineTask?.cancel()
+    connectionDeadlineTask = Task { [weak self] in
+      try? await Task.sleep(for: .seconds(20))
+      guard !Task.isCancelled else { return }
+      await self?.connectionTimedOut(socket)
+    }
 
     receiveTask?.cancel()
     receiveTask = Task { [weak self] in await self?.receiveLoop(socket) }
@@ -214,6 +244,8 @@ public actor PlainwireRealtimeClient {
           let type = object["type"]?.stringValue
         else { continue }
         if type == "hello" {
+          connectionDeadlineTask?.cancel()
+          connectionDeadlineTask = nil
           attempt = 0
           setState(.connected)
           startHeartbeat()
@@ -228,6 +260,9 @@ public actor PlainwireRealtimeClient {
   }
 
   private func scheduleReconnect(reason: String) {
+    connectionDeadlineTask?.cancel()
+    connectionDeadlineTask = nil
+    pendingPingID = nil
     heartbeatTask?.cancel()
     heartbeatTask = nil
     receiveTask?.cancel()
@@ -252,15 +287,53 @@ public actor PlainwireRealtimeClient {
 
   private func connectAfterDelay() { if shouldRun { connect() } }
 
+  private func connectionTimedOut(_ socket: URLSessionWebSocketTask) {
+    guard shouldRun, webSocket === socket, state != .connected else { return }
+    scheduleReconnect(reason: "The realtime connection timed out.")
+  }
+
   private func startHeartbeat() {
     heartbeatTask?.cancel()
     heartbeatTask = Task { [weak self] in
       while !Task.isCancelled {
-        try? await Task.sleep(for: .seconds(45))
+        try? await Task.sleep(for: .seconds(20))
         guard !Task.isCancelled, let self else { return }
-        do { try await self.sendObject(["type": .string("ping")]) } catch { return }
+        guard await self.checkHeartbeat() else { return }
       }
     }
+  }
+
+  private func checkHeartbeat() async -> Bool {
+    guard let socket = webSocket, state == .connected else { return false }
+    let id = UUID()
+    pendingPingID = id
+    // The frame callback and deadline are independent: a lost connection must
+    // not leave a continuation waiting forever for a pong.
+    socket.sendPing { [weak self] error in
+      let failed = error != nil
+      Task { await self?.receivedPong(id: id, socket: socket, failed: failed) }
+    }
+    connectionDeadlineTask?.cancel()
+    connectionDeadlineTask = Task { [weak self] in
+      try? await Task.sleep(for: .seconds(10))
+      guard !Task.isCancelled else { return }
+      await self?.pingTimedOut(id: id, socket: socket)
+    }
+    do { try await sendObject(["type": .string("ping")]); return true }
+    catch { return false }
+  }
+
+  private func receivedPong(id: UUID, socket: URLSessionWebSocketTask, failed: Bool) {
+    guard webSocket === socket, pendingPingID == id else { return }
+    pendingPingID = nil
+    connectionDeadlineTask?.cancel()
+    connectionDeadlineTask = nil
+    if failed { scheduleReconnect(reason: "The realtime connection was interrupted.") }
+  }
+
+  private func pingTimedOut(id: UUID, socket: URLSessionWebSocketTask) {
+    guard webSocket === socket, pendingPingID == id else { return }
+    scheduleReconnect(reason: "The realtime connection stopped responding.")
   }
 
   private func restoreDesiredState() async {
@@ -301,12 +374,15 @@ public actor PlainwireRealtimeClient {
   private func setState(_ newValue: PlainwireRealtimeState) {
     state = newValue
     for continuation in stateContinuations.values { continuation.yield(newValue) }
+    for continuation in updateContinuations.values { continuation.yield(.state(newValue)) }
   }
 
   private func broadcast(_ event: PlainwireRealtimeEvent) {
     for continuation in eventContinuations.values { continuation.yield(event) }
+    for continuation in updateContinuations.values { continuation.yield(.event(event)) }
   }
 
   private func removeEventContinuation(_ id: UUID) { eventContinuations.removeValue(forKey: id) }
   private func removeStateContinuation(_ id: UUID) { stateContinuations.removeValue(forKey: id) }
+  private func removeUpdateContinuation(_ id: UUID) { updateContinuations.removeValue(forKey: id) }
 }

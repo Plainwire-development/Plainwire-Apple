@@ -12,6 +12,7 @@ final class WorkspaceController: NSObject, WKNavigationDelegate, WKUIDelegate, W
   @ObservationIgnored private var cookieStore: WKHTTPCookieStore?
   @ObservationIgnored private var downloads: [ObjectIdentifier: WKDownload] = [:]
   @ObservationIgnored private var downloadPaths: [ObjectIdentifier: URL] = [:]
+  @ObservationIgnored private var temporaryDownloadFolder: URL?
   @ObservationIgnored private var promptCompletion: (@MainActor @Sendable (String?) -> Void)?
   var dialogIsPrompt = false
   var dialogInput = ""
@@ -86,6 +87,8 @@ final class WorkspaceController: NSObject, WKNavigationDelegate, WKUIDelegate, W
     downloads.values.forEach { $0.cancel { _ in } }
     downloads = [:]
     downloadPaths = [:]
+    if let folder = temporaryDownloadFolder { try? FileManager.default.removeItem(at: folder) }
+    temporaryDownloadFolder = nil
     finishDialog(false)
     webView?.stopLoading()
     webView?.navigationDelegate = nil
@@ -106,24 +109,33 @@ final class WorkspaceController: NSObject, WKNavigationDelegate, WKUIDelegate, W
         cookieStore.getAllCookies { continuation.resume(returning: $0) }
       }
       guard let self, self.prepared, self.cookieStore === cookieStore else { return }
-      guard !cookies.contains(where: { $0.name == "pw_session" && $0.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".")) == self.baseURL.host }) else { return }
+      if let cookie = cookies.first(where: { $0.name == "pw_session" && $0.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".")) == self.baseURL.host }) {
+        // Keep native requests authenticated when the web client rotates its session.
+        HTTPCookieStorage.shared.setCookie(cookie)
+        return
+      }
       self.onSessionEnded?()
     }
   }
 
   private func trusted(_ url: URL?) -> Bool {
     guard let url else { return false }
-    return url.scheme == baseURL.scheme && url.host == baseURL.host && url.port == baseURL.port
+    return PlainwireConfiguration(baseURL: baseURL).isSameOrigin(url)
+  }
+
+  private func trustedBlob(_ url: URL) -> Bool {
+    url.scheme == "blob" && trusted(URL(string: String(url.absoluteString.dropFirst(5))))
   }
 
   func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
     guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
-    if navigationAction.shouldPerformDownload { decisionHandler(.download); return }
-    if trusted(url) || url.scheme == "about" || url.scheme == "blob" {
-      decisionHandler(.allow)
+    if trusted(url) || url.absoluteString == "about:blank" || trustedBlob(url) {
+      decisionHandler(navigationAction.shouldPerformDownload ? .download : .allow)
     } else {
       decisionHandler(.cancel)
+      guard navigationAction.navigationType == .linkActivated,
+        navigationAction.targetFrame?.isMainFrame != false else { return }
       guard ["https", "http", "mailto"].contains(url.scheme?.lowercased() ?? "") else { return }
       #if os(macOS)
         NSWorkspace.shared.open(url)
@@ -135,6 +147,11 @@ final class WorkspaceController: NSObject, WKNavigationDelegate, WKUIDelegate, W
 
   func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse,
                decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void) {
+    if navigationResponse.isForMainFrame, let url = navigationResponse.response.url,
+      !trusted(url), url.absoluteString != "about:blank", !trustedBlob(url) {
+      decisionHandler(.cancel)
+      return
+    }
     let disposition = (navigationResponse.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition") ?? ""
     decisionHandler(!navigationResponse.canShowMIMEType || disposition.lowercased().hasPrefix("attachment") ? .download : .allow)
   }
@@ -165,11 +182,14 @@ final class WorkspaceController: NSObject, WKNavigationDelegate, WKUIDelegate, W
   func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
                initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
                decisionHandler: @escaping @MainActor @Sendable (WKPermissionDecision) -> Void) {
-    decisionHandler(origin.host == baseURL.host && origin.protocol == baseURL.scheme ? .prompt : .deny)
+    let expectedPort = baseURL.port ?? (baseURL.scheme == "https" ? 443 : 80)
+    let matchesPort = origin.port == expectedPort || (origin.port == 0 && baseURL.port == nil)
+    decisionHandler(origin.host == baseURL.host && origin.protocol == baseURL.scheme && matchesPort ? .prompt : .deny)
   }
 
   func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
                initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable () -> Void) {
+    finishDialog(false)
     dialogIsConfirmation = false
     dialogIsPrompt = false
     dialogMessage = message
@@ -177,6 +197,7 @@ final class WorkspaceController: NSObject, WKNavigationDelegate, WKUIDelegate, W
   }
   func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
                initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable (Bool) -> Void) {
+    finishDialog(false)
     dialogIsConfirmation = true
     dialogIsPrompt = false
     dialogMessage = message
@@ -185,6 +206,7 @@ final class WorkspaceController: NSObject, WKNavigationDelegate, WKUIDelegate, W
   func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String,
                defaultText: String?, initiatedByFrame frame: WKFrameInfo,
                completionHandler: @escaping @MainActor @Sendable (String?) -> Void) {
+    finishDialog(false)
     dialogIsPrompt = true
     dialogIsConfirmation = false
     dialogInput = defaultText ?? ""
@@ -221,7 +243,7 @@ final class WorkspaceController: NSObject, WKNavigationDelegate, WKUIDelegate, W
   }
   func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
                 suggestedFilename: String, completionHandler: @escaping @MainActor @Sendable (URL?) -> Void) {
-    let name = (suggestedFilename as NSString).lastPathComponent
+    let name = PWAttachment.safeFilename(suggestedFilename)
     #if os(macOS)
       let panel = NSSavePanel()
       panel.nameFieldStringValue = name
@@ -231,7 +253,11 @@ final class WorkspaceController: NSObject, WKNavigationDelegate, WKUIDelegate, W
         completionHandler(url)
       }
     #else
-      let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+      if temporaryDownloadFolder == nil {
+        temporaryDownloadFolder = FileManager.default.temporaryDirectory.appendingPathComponent("plainwire-web-" + UUID().uuidString, isDirectory: true)
+      }
+      guard let root = temporaryDownloadFolder else { completionHandler(nil); return }
+      let folder = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
       do {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let url = folder.appendingPathComponent(name)
