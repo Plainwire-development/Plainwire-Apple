@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.2
+
+- Fixed the Mac video crash by embedding native AVKit player controls. Added cancellable media loading, playback errors, and cleanup when leaving a chat.
+- Fixed false online indicators, stale presence snapshots, silent socket disconnects, and detail requests delaying realtime updates.
+- Hardened session transitions, revoked-room handling, API redirects, filenames, and cleanup of private content on sign-out.
+- Added enforced download limits, image dimension checks, bounded live message caches, and reduced idle voice-note updates.
+- Improved presence labels, video loading cards, profile banners, and message composer validation. See [the client audit](AUDIT.md) for findings and verification.
+
 ## 2.0.1
 
 - Fixed sync failing when an empty conversation's `last_message_id` is the string `"null"`. The backend can serialize SQL null atoms this way; optional numeric fields now accept it as absent while required IDs and malformed numbers remain checked.
