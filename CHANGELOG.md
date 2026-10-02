@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.3
+
+- Scrolling over an inline video on Mac now scrolls the chat. Hold Option (⌥) while scrolling to seek through the video.
+- Added “Option-scroll to seek videos” in You → Chat. The shortcut is enabled by default and can be disabled; the setting persists across launches.
+- Added playback smoke checks for scroll forwarding, modifier seeking, toggling, and preserving paused playback.
+
 ## 2.0.2
 
 - Fixed the Mac video crash by embedding native AVKit player controls. Added cancellable media loading, playback errors, and cleanup when leaving a chat.

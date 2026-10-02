@@ -53,6 +53,7 @@ For the presence fix, disconnect the second account and verify that Friends, pro
 ## Attachments
 
 - Attach several files at once. Try an image, PDF, and MP4/MOV video.
+- On Mac, scroll over a playing or paused video and its controls. Confirm the chat scrolls without seeking. Hold Option (⌥) while scrolling and confirm the video seeks. Turn off “Option-scroll to seek videos” in You → Chat and confirm Option-scroll also scrolls the chat. Toggle it with a video open, restart to check persistence, and check trackpad momentum and full-screen playback.
 - Send an attachment as a spoiler. Confirm its image or video does not load until revealed and that it can be hidden again.
 - Open a room with many repeated avatars and images. Scroll away and back; they should appear from cache without a visible reload.
 - Try an unavailable image and a large upload. Confirm the error is readable and the rest of chat still works.

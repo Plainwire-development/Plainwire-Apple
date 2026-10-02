@@ -16,6 +16,7 @@ enum AppPreferenceKeys {
   static let notificationSounds = "plainwire.apple.notificationSounds"
   static let reduceInterfaceMotion = "plainwire.apple.reduceInterfaceMotion"
   static let compactMessages = "plainwire.apple.compactMessages"
+  static let optionScrollVideoSeeking = "plainwire.apple.optionScrollVideoSeeking"
 }
 
 enum AppPreferences {
@@ -26,6 +27,7 @@ enum AppPreferences {
       AppPreferenceKeys.notificationSounds: true,
       AppPreferenceKeys.reduceInterfaceMotion: false,
       AppPreferenceKeys.compactMessages: false,
+      AppPreferenceKeys.optionScrollVideoSeeking: true,
     ])
   }
 }

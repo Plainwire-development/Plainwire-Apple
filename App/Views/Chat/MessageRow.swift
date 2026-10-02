@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 struct MessageRow: View {
   @Environment(AppModel.self) private var model
@@ -346,12 +347,15 @@ private struct VideoAttachment: View {
   let url: URL?
   @Environment(\.scenePhase) private var scenePhase
   @State private var playback = MediaPlayback()
+  #if os(macOS)
+    @AppStorage(AppPreferenceKeys.optionScrollVideoSeeking) private var optionScrollVideoSeeking = true
+  #endif
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       ZStack {
         if let player = playback.player {
-          NativeVideoPlayer(player: player)
+          videoPlayer(player)
             .overlay {
               if playback.loading { ProgressView().tint(.white).allowsHitTesting(false) }
             }
@@ -397,6 +401,14 @@ private struct VideoAttachment: View {
     .onDisappear { playback.reset() }
     .onChange(of: url) { _, _ in playback.reset() }
     .onChange(of: scenePhase) { _, phase in if phase != .active { playback.pause() } }
+  }
+
+  private func videoPlayer(_ player: AVPlayer) -> some View {
+    #if os(macOS)
+      NativeVideoPlayer(player: player, optionScrollSeeking: optionScrollVideoSeeking)
+    #else
+      NativeVideoPlayer(player: player)
+    #endif
   }
 }
 

@@ -134,20 +134,58 @@ final class MediaPlayback {
 // The SwiftUI VideoPlayer overlay crashes in _AVKit_SwiftUI on affected Mac
 // runtimes. Embed AVKit's platform controls directly on both platforms.
 #if os(macOS)
+final class OptionScrollPlayerView: AVPlayerView {
+  var optionScrollSeeking = true
+  private var scrollSeekTarget: Double?
+  private var scrollSeekGeneration = 0
+
+  override func scrollWheel(with event: NSEvent) {
+    guard optionScrollSeeking && event.modifierFlags.contains(.option) else {
+      // Bypass AVKit's scroll-to-seek handler so the chat receives the gesture.
+      nextResponder?.scrollWheel(with: event)
+      return
+    }
+    guard let player, let item = player.currentItem, item.status == .readyToPlay else { return }
+    let duration = item.duration.seconds
+    let current = scrollSeekTarget ?? player.currentTime().seconds
+    guard duration.isFinite, duration > 0, current.isFinite else { return }
+    let delta = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY)
+      ? event.scrollingDeltaX : event.scrollingDeltaY
+    guard delta != 0 else { return }
+    // Trackpads report pixels; mouse wheels report coarser steps.
+    let seconds = delta * (event.hasPreciseScrollingDeltas ? 0.05 : 1)
+    let target = min(duration, max(0, current + seconds))
+    scrollSeekTarget = target
+    scrollSeekGeneration += 1
+    let generation = scrollSeekGeneration
+    player.seek(to: CMTime(seconds: target, preferredTimescale: 600),
+      toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+      Task { @MainActor [weak self] in
+        guard let self, self.scrollSeekGeneration == generation else { return }
+        self.scrollSeekTarget = nil
+      }
+    }
+  }
+}
+
 struct NativeVideoPlayer: NSViewRepresentable {
   let player: AVPlayer
-  func makeNSView(context: Context) -> AVPlayerView {
-    let view = AVPlayerView()
+  var optionScrollSeeking = true
+
+  func makeNSView(context: Context) -> OptionScrollPlayerView {
+    let view = OptionScrollPlayerView()
     view.controlsStyle = .inline
     view.videoGravity = .resizeAspect
     view.showsFullScreenToggleButton = true
+    view.optionScrollSeeking = optionScrollSeeking
     view.player = player
     return view
   }
-  func updateNSView(_ view: AVPlayerView, context: Context) {
+  func updateNSView(_ view: OptionScrollPlayerView, context: Context) {
+    view.optionScrollSeeking = optionScrollSeeking
     if view.player !== player { view.player = player }
   }
-  static func dismantleNSView(_ view: AVPlayerView, coordinator: ()) {
+  static func dismantleNSView(_ view: OptionScrollPlayerView, coordinator: ()) {
     view.player?.pause()
     view.player = nil
   }

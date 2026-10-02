@@ -31,6 +31,11 @@ import AVKit
       view.layoutSubtreeIfNeeded()
       try await Task.sleep(for: .milliseconds(250))
       guard containsPlayer(view) else { throw SmokeError.failed("Native AVPlayerView was not mounted") }
+      if let playerView = findPlayer(view) {
+        try await checkScrollRouting(playerView)
+      } else {
+        throw SmokeError.failed("Option-scroll player was not mounted")
+      }
       playback.reset()
       window.orderOut(nil)
       guard playback.player == nil, !playback.loading, !playback.playing else {
@@ -48,11 +53,69 @@ import AVKit
     }
     guard playback.error != nil, playback.player == nil else { throw SmokeError.failed("Missing video did not show an error") }
     playback.reset()
-    print("Media smoke passed: native mounting, playback, teardown, cancellation, and failure recovery.")
+    print("Media smoke passed: native mounting, scroll routing, playback, teardown, cancellation, and failure recovery.")
   }
 
   @MainActor private static func containsPlayer(_ view: NSView) -> Bool {
     view is AVPlayerView || view.subviews.contains(where: containsPlayer)
+  }
+
+  @MainActor private static func findPlayer(_ view: NSView) -> OptionScrollPlayerView? {
+    if let player = view as? OptionScrollPlayerView { return player }
+    return view.subviews.lazy.compactMap { findPlayer($0) }.first
+  }
+
+  @MainActor private static func checkScrollRouting(_ view: OptionScrollPlayerView) async throws {
+    let receiver = ScrollReceiver()
+    let previousResponder = view.nextResponder
+    view.nextResponder = receiver
+    defer { view.nextResponder = previousResponder }
+
+    guard let player = view.player,
+      let cgEvent = CGEvent(scrollWheelEvent2Source: nil, units: .pixel,
+      wheelCount: 1, wheel1: 1, wheel2: 0, wheel3: 0) else {
+      throw SmokeError.failed("Could not create scroll event")
+    }
+    player.pause()
+    for (enabled, flags, shouldForward) in [
+      (true, CGEventFlags(), true),
+      (true, CGEventFlags.maskShift, true),
+      (true, CGEventFlags.maskControl, true),
+      (true, CGEventFlags.maskAlternate, false),
+      (false, CGEventFlags.maskAlternate, true),
+      (false, CGEventFlags(), true),
+      (true, CGEventFlags.maskAlternate, false),
+    ] {
+      await player.seek(to: CMTime(seconds: 0.5, preferredTimescale: 600))
+      let previousTime = player.currentTime().seconds
+      view.optionScrollSeeking = enabled
+      cgEvent.flags = flags
+      guard let event = NSEvent(cgEvent: cgEvent) else {
+        throw SmokeError.failed("Could not bridge scroll event")
+      }
+      let previousCount = receiver.scrollCount
+      view.scrollWheel(with: event)
+      guard receiver.scrollCount == previousCount + (shouldForward ? 1 : 0) else {
+        throw SmokeError.failed("Scroll routing failed: enabled=\(enabled), flags=\(flags.rawValue), expectedForward=\(shouldForward), forwarded=\(receiver.scrollCount - previousCount)")
+      }
+      for _ in 0..<50 {
+        if abs(player.currentTime().seconds - previousTime) > 0.001 { break }
+        if shouldForward { break }
+        try await Task.sleep(for: .milliseconds(10))
+      }
+      let didSeek = abs(player.currentTime().seconds - previousTime) > 0.001
+      guard didSeek != shouldForward, player.rate == 0 else {
+        throw SmokeError.failed("Scroll seeking did not respect the setting or preserve paused playback")
+      }
+      // Let the completion handler release the accumulated seek target.
+      try await Task.sleep(for: .milliseconds(20))
+    }
+    view.optionScrollSeeking = true
+  }
+
+  @MainActor private final class ScrollReceiver: NSResponder {
+    var scrollCount = 0
+    override func scrollWheel(with event: NSEvent) { scrollCount += 1 }
   }
 
   @MainActor private static func makeVideo(_ url: URL) async throws {

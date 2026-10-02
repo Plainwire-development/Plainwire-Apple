@@ -15,6 +15,9 @@ struct SettingsView: View {
   @AppStorage(AppPreferenceKeys.notificationSounds) private var notificationSounds = true
   @AppStorage(AppPreferenceKeys.reduceInterfaceMotion) private var reduceInterfaceMotion = false
   @AppStorage(AppPreferenceKeys.compactMessages) private var compactMessages = false
+  #if os(macOS)
+    @AppStorage(AppPreferenceKeys.optionScrollVideoSeeking) private var optionScrollVideoSeeking = true
+  #endif
   @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
   @State private var activeSheet: SettingsSheet?
 
@@ -98,7 +101,7 @@ struct SettingsView: View {
   private var chatCard: some View {
     SettingsCard(
       title: "Chat", symbol: "bubble.left.and.text.bubble.right",
-      subtitle: "Typing, spacing, and motion."
+      subtitle: "Customize your chat experience."
     ) {
       SettingsToggleRow(
         title: "Typing indicators", detail: "Let people know while you are composing a message.",
@@ -112,6 +115,13 @@ struct SettingsView: View {
         title: "Reduce interface motion",
         detail: "Use simpler transitions in addition to system Reduce Motion.",
         isOn: $reduceInterfaceMotion)
+      #if os(macOS)
+        SettingsDivider()
+        SettingsToggleRow(
+          title: "Option-scroll to seek videos",
+          detail: "Hold Option (⌥) while scrolling over a video to seek. Regular scrolling moves the chat.",
+          isOn: $optionScrollVideoSeeking)
+      #endif
     }
   }
 
