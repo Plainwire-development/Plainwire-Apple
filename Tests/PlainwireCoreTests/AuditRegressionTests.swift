@@ -54,6 +54,45 @@ import FoundationNetworking
   #expect(presence.status(for: 9) == "busy")
 }
 
+@Test func sparseSnapshotsConfirmWatchedUsersAreOffline() {
+  var presence = PWPresence()
+  presence.retainUsers([7, 9])
+  #expect(presence.status(for: 9) == nil)
+  presence.apply(.init(type: "presence_state", payload: ["statuses": .object(["7": .string("online")])]))
+  #expect(presence.status(for: 7) == "online")
+  #expect(presence.status(for: 9) == "offline")
+  #expect(presence.status(for: 11) == nil)
+  presence.retainUsers([7, 9, 11])
+  #expect(presence.status(for: 11) == nil)
+  presence.apply(.init(type: "presence_state", payload: ["statuses": .object([:])]))
+  #expect(presence.status(for: 7) == "offline")
+  #expect(presence.status(for: 11) == "offline")
+  presence.reset(keepingWatch: true)
+  #expect(presence.status(for: 7) == nil)
+  #expect(presence.status(for: 11) == nil)
+  presence.apply(.init(type: "presence_state", payload: ["statuses": .object([:])]))
+  #expect(presence.status(for: 11) == "offline")
+  presence.reset()
+  presence.apply(.init(type: "presence_state", payload: ["statuses": .object([:])]))
+  #expect(presence.status(for: 11) == nil)
+}
+
+@Test func legacyPresenceSnapshotsAndMalformedEvents() {
+  var presence = PWPresence()
+  presence.retainUsers([7, 9])
+  presence.apply(.init(type: "presence_state", payload: [:]))
+  #expect(presence.status(for: 7) == nil)
+  presence.apply(.init(type: "presence_state", payload: ["online": .array([.int(7), .string("7"), .int(-1), .null])]))
+  #expect(presence.status(for: 7) == "online")
+  #expect(presence.status(for: 9) == "offline")
+  #expect(presence.status(for: -1) == nil)
+  presence.apply(.init(type: "presence_state", payload: ["statuses": .object(["9": .string("busy")]), "online": .array([.int(7)])]))
+  #expect(presence.status(for: 7) == "offline")
+  #expect(presence.status(for: 9) == "busy")
+  presence.retainUsers([7])
+  #expect(presence.status(for: 9) == nil)
+}
+
 @Test func originPolicyIncludesSchemeCredentialsAndEffectivePort() {
   let config = PlainwireConfiguration(baseURL: URL(string: "https://plainwire.example")!)
   #expect(config.isSameOrigin(URL(string: "https://plainwire.example:443/media")!))

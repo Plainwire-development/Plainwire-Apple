@@ -4,15 +4,21 @@ import Foundation
 public struct PWPresence: Equatable, Sendable {
   private var statuses: [PlainwireID: String] = [:]
   private var platforms: [PlainwireID: String] = [:]
+  private var watchedUsers: Set<PlainwireID> = []
+  private var snapshotUsers: Set<PlainwireID> = []
 
   public init() {}
 
-  public mutating func reset() {
+  public mutating func reset(keepingWatch: Bool = false) {
     statuses.removeAll()
     platforms.removeAll()
+    snapshotUsers.removeAll()
+    if !keepingWatch { watchedUsers.removeAll() }
   }
 
   public mutating func retainUsers(_ ids: Set<PlainwireID>) {
+    watchedUsers = ids
+    snapshotUsers.formIntersection(ids)
     statuses = statuses.filter { ids.contains($0.key) }
     platforms = platforms.filter { ids.contains($0.key) }
   }
@@ -20,9 +26,13 @@ public struct PWPresence: Equatable, Sendable {
   public mutating func apply(_ event: PlainwireRealtimeEvent) {
     switch event.type {
     case "presence_state":
+      guard event.payload["statuses"]?.objectValue != nil || event.payload["online"]?.arrayValue != nil else { return }
       // A new watch snapshot replaces the previous one, including absent users.
       statuses = event.statuses.mapValues(Self.normalizedStatus)
       platforms = event.platforms.filter { Self.isPresent(statuses[$0.key]) }
+      // The server omits offline users. Only a completed watch snapshot is
+      // evidence that a missing user is offline; newly watched users still wait.
+      snapshotUsers = watchedUsers
     case "presence_online", "presence_status":
       guard let id = event.userID else { return }
       // The online event itself is evidence; status events require a status.
@@ -37,7 +47,9 @@ public struct PWPresence: Equatable, Sendable {
     }
   }
 
-  public func status(for id: PlainwireID) -> String? { statuses[id] }
+  public func status(for id: PlainwireID) -> String? {
+    statuses[id] ?? (snapshotUsers.contains(id) ? "offline" : nil)
+  }
   public func platform(for id: PlainwireID) -> String? { platforms[id] }
 
   private static func normalizedStatus(_ status: String) -> String {

@@ -1,6 +1,26 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 import Testing
 @testable import PlainwireCore
+
+@Test func floatingPanelStaysReachableAfterDraggingAndWindowResizing() {
+  let container = CGSize(width: 920, height: 620)
+  let preferred = CGSize(width: 480, height: 380)
+  let dock = PWCallPanelLayout(container: container, preferredSize: preferred)
+  #expect(dock.origin.x == 428 && dock.origin.y == 228)
+  let dragged = PWCallPanelLayout(container: container, preferredSize: preferred, origin: CGPoint(x: -500, y: 2000))
+  #expect(dragged.origin.x == 12 && dragged.origin.y == 228)
+  let phone = PWCallPanelLayout(container: CGSize(width: 320, height: 480), preferredSize: CGSize(width: 1200, height: 900), origin: dock.origin)
+  #expect(phone.size.width == 296 && phone.size.height == 456)
+  #expect(phone.origin.x == 12 && phone.origin.y == 12)
+  let minimum = PWCallPanelLayout(container: container, preferredSize: CGSize(width: -10, height: -20))
+  #expect(minimum.size.width == 320 && minimum.size.height == 100)
+  let enlarged = PWCallPanelLayout(container: container, preferredSize: CGSize(width: 720, height: 520), origin: dock.origin)
+  #expect(enlarged.origin.x + enlarged.size.width <= container.width - 12)
+  #expect(enlarged.origin.y + enlarged.size.height <= container.height - 12)
+}
 
 @Test func callEventsAreScopedToKindAndRoom() {
   let call = PWCallRoom(kind: .direct, id: 42)

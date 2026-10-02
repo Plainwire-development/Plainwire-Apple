@@ -258,6 +258,7 @@ struct PersonProfileSheet: View {
   let userID: PlainwireID
   @State private var profile: PWProfile?
   @State private var loading = true
+  @State private var presenceToken = UUID()
 
   var body: some View {
     NavigationStack {
@@ -306,7 +307,11 @@ struct PersonProfileSheet: View {
     }
     .adaptiveSheetSize(minWidth: 360, idealWidth: 480, minHeight: 400)
     .sheetErrorNotice()
-    .task(id: userID) { await load() }
+    .task(id: userID) {
+      await model.watchProfilePresence(userID, token: presenceToken)
+      await load()
+    }
+    .onDisappear { model.stopWatchingProfilePresence(token: presenceToken) }
   }
   private func load() async {
     loading = true

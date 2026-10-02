@@ -135,6 +135,7 @@ final class AppModel {
   var syncWarning: String?
   var typingByRoom: [String: [PlainwireID: String]] = [:]
   private var presence = PWPresence()
+  private var profilePresenceWatches: [UUID: PlainwireID] = [:]
 
   init() {
     api = PlainwireAPIClient(configuration: config)
@@ -197,6 +198,7 @@ final class AppModel {
     guard generation == sessionGeneration, session != nil else { return }
     // An unavailable panel must not discard a valid authenticated session.
     sessionState = .ready
+    await realtime.setPresenceStatus(session?.user.status ?? "online")
     startRealtimeTasks()
     if let link = pendingDeepLink {
       pendingDeepLink = nil
@@ -299,6 +301,7 @@ final class AppModel {
     typingExpiryTasks = [:]
     typingByRoom = [:]
     presence.reset()
+    profilePresenceWatches.removeAll()
     session = nil
     conversations = []
     servers = []
@@ -330,6 +333,7 @@ final class AppModel {
       let restored = try await api.restoreSession()
       guard generation == sessionGeneration else { return }
       session = restored
+      await realtime.setPresenceStatus(restored.user.status)
       try await bootstrap(incremental: true)
       if let room = selectedRoom { await reconcileRoom(room) }
       if let id = selectedServerID, selectedSection == .servers {
@@ -352,7 +356,7 @@ final class AppModel {
     if let room = selectedRoom {
       await realtime.sendTyping(scope: room.scope, id: room.roomID, active: false)
     }
-    presence.reset()
+    presence.reset(keepingWatch: true)
     await realtime.stop()
   }
 
@@ -395,6 +399,7 @@ final class AppModel {
       let restored = try await api.restoreSession()
       guard generation == sessionGeneration else { return false }
       session = restored
+      await realtime.setPresenceStatus(restored.user.status)
       return true
     } catch { if generation == sessionGeneration, !Task.isCancelled { errorMessage = error.localizedDescription }; return false }
   }
@@ -1357,7 +1362,8 @@ final class AppModel {
   }
 
   private func updatePresenceWatch() async {
-    var ids = Set<PlainwireID>()
+    var ids = Set(profilePresenceWatches.values)
+    if let id = session?.user.id { ids.insert(id) }
     for friend in friends where friend.status == "accepted" { ids.insert(friend.user.id) }
     for conversation in conversations {
       if let peerID = conversation.peerId { ids.insert(peerID) }
@@ -1371,6 +1377,17 @@ final class AppModel {
     let watched = Set(ids.sorted().prefix(2_000))
     presence.retainUsers(watched)
     await realtime.watchPresence(Array(watched))
+  }
+
+  func watchProfilePresence(_ id: PlainwireID, token: UUID) async {
+    guard sessionState == .ready else { return }
+    profilePresenceWatches[token] = id
+    await updatePresenceWatch()
+  }
+
+  func stopWatchingProfilePresence(token: UUID) {
+    profilePresenceWatches[token] = nil
+    Task { await updatePresenceWatch() }
   }
 
   private func updateRealtimeSubscriptions() async {
@@ -1464,7 +1481,7 @@ final class AppModel {
           self.realtimeState = state
           self.calls.connectionChanged(state)
           if state != .connected {
-            self.presence.reset()
+            self.presence.reset(keepingWatch: true)
             self.typingExpiryTasks.values.forEach { $0.cancel() }
             self.typingExpiryTasks.removeAll()
             self.typingByRoom.removeAll()
@@ -1485,7 +1502,10 @@ final class AppModel {
     switch event.type {
     case "hello":
       if let refreshed = event.session { session = refreshed }
+      await realtime.setPresenceStatus(session?.user.status ?? "online")
       scheduleSync(delay: .milliseconds(100))
+    case "realtime_resync":
+      scheduleRealtimeWork(key: "resync") { model in await model.refresh() }
     case "message_created":
       if let message = event.message {
         upsert(message, in: "\(message.scope):\(message.scopeId)")
@@ -1526,7 +1546,7 @@ final class AppModel {
         }
       }
     case "conversation_updated", "conversation_created", "conversation_members_changed",
-      "conversation_members_added", "conversation_member_removed", "realtime_resync",
+      "conversation_members_added", "conversation_member_removed",
       "access_revoked":
       if let id = event.conversationID, conversationDetails[id] != nil,
         event.type != "access_revoked" {

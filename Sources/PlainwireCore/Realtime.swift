@@ -45,7 +45,13 @@ public struct PlainwireRealtimeEvent: Sendable, Hashable {
     payload["client_platform"]?.stringValue ?? payload["platform"]?.stringValue
   }
   public var statuses: [PlainwireID: String] {
-    guard let object = payload["statuses"]?.objectValue else { return [:] }
+    guard let object = payload["statuses"]?.objectValue else {
+      var result: [PlainwireID: String] = [:]
+      for value in payload["online"]?.arrayValue ?? [] {
+        if let id = value.intValue, id > 0 { result[id] = "online" }
+      }
+      return result
+    }
     var result: [PlainwireID: String] = [:]
     result.reserveCapacity(object.count)
     for (key, value) in object {
@@ -81,6 +87,7 @@ public actor PlainwireRealtimeClient {
   private var attempt = 0
   private var desiredSubscriptions = Set<String>()
   private var desiredPresence = Set<PlainwireID>()
+  private var desiredStatus = "online"
 
   private var eventContinuations: [UUID: AsyncStream<PlainwireRealtimeEvent>.Continuation] = [:]
   private var stateContinuations: [UUID: AsyncStream<PlainwireRealtimeState>.Continuation] = [:]
@@ -191,6 +198,13 @@ public actor PlainwireRealtimeClient {
     if state == .connected { await sendPresenceWatch() }
   }
 
+  public func setPresenceStatus(_ status: String) async {
+    let next = ["away", "busy", "invisible"].contains(status) ? status : "online"
+    guard next != desiredStatus else { return }
+    desiredStatus = next
+    if state == .connected { await sendPresenceStatus() }
+  }
+
   public func sendTyping(scope: String, id: PlainwireID, active: Bool) async {
     guard ["direct", "channel", "thread"].contains(scope), id > 0, state == .connected else {
       return
@@ -251,6 +265,8 @@ public actor PlainwireRealtimeClient {
           startHeartbeat()
           await restoreDesiredState()
         }
+        if type == "realtime_resync" { await restoreDesiredState() }
+        guard webSocket === socket, !Task.isCancelled else { return }
         broadcast(PlainwireRealtimeEvent(type: type, payload: object))
       } catch {
         if shouldRun, webSocket === socket { scheduleReconnect(reason: error.localizedDescription) }
@@ -337,10 +353,15 @@ public actor PlainwireRealtimeClient {
   }
 
   private func restoreDesiredState() async {
+    await sendPresenceStatus()
     for key in desiredSubscriptions.sorted() {
       try? await sendObject(["type": .string("subscribe"), "key": .string(key)])
     }
     await sendPresenceWatch()
+  }
+
+  private func sendPresenceStatus() async {
+    try? await sendObject(["type": .string("presence_update"), "status": .string(desiredStatus)])
   }
 
   private func sendPresenceWatch() async {

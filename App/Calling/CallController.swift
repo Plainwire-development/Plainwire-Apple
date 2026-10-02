@@ -179,6 +179,13 @@ final class CallController {
         Task { try? await send?(command) }
         return
       }
+      if let incoming {
+        if incoming.id == id, incoming.token == event.payload["invite_id"]?.stringValue { return }
+        var command = PWCallRoom(kind: .direct, id: id).command("decline")
+        if let token = event.payload["invite_id"]?.stringValue { command["invite_id"] = .string(token) }
+        Task { try? await send?(command) }
+        return
+      }
       incoming = Invitation(id: id, title: title ?? event.payload["call_title"]?.stringValue
         ?? event.payload["display_name"]?.stringValue ?? "Incoming call", token: event.payload["invite_id"]?.stringValue)
       error = nil
@@ -192,6 +199,7 @@ final class CallController {
     }
     let ended = ["call_declined", "call_cancelled", "call_missed", "call_ended", "call_superseded", "voice_superseded", "call_ejected", "voice_ejected"]
     if let incoming, event.conversationID == incoming.id,
+      event.payload["invite_id"]?.stringValue == nil || event.payload["invite_id"]?.stringValue == incoming.token,
       ended.contains(event.type) || event.type == "call_accepted" {
       self.incoming = nil
       deadline?.cancel()
@@ -269,7 +277,10 @@ final class CallController {
       payload["signal"] = .object(signal)
       try await self.send?(payload)
     }
-    peer.onError = { [weak self] message in self?.error = message }
+    peer.onError = { [weak self, weak peer] message in
+      guard let self, let peer, self.generation == epoch, self.peers[id] === peer else { return }
+      self.error = message
+    }
     peer.remoteAudioEnabled = !deafened
     peers[id] = peer
     for signal in earlySignals.removeValue(forKey: id) ?? [] { peer.enqueue(signal) }
@@ -365,6 +376,10 @@ final class CallController {
   func connectionChanged(_ state: PlainwireRealtimeState) {
     guard room != nil else { return }
     if state != .connected {
+      generation += 1
+      startup?.cancel(); startup = nil
+      deadline?.cancel(); deadline = nil
+      relayRefresh?.cancel(); relayRefresh = nil
       awaitingReconnect = true
       status = "Reconnecting…"
       peers.values.forEach { $0.close() }
@@ -372,7 +387,16 @@ final class CallController {
       earlySignals.removeAll()
     } else if awaitingReconnect { begin() }
   }
-  func reconnect() { guard room != nil else { return }; peers.values.forEach { $0.close() }; peers.removeAll(); awaitingReconnect = true; error = nil; begin() }
+  func reconnect() {
+    guard room != nil else { return }
+    peers.values.forEach { $0.close() }
+    peers.removeAll()
+    earlySignals.removeAll()
+    deadline?.cancel(); deadline = nil
+    awaitingReconnect = true
+    error = nil
+    begin()
+  }
 
   private func finish(with message: String) async {
     let epoch = generation

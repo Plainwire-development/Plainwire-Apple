@@ -36,7 +36,7 @@ struct AppRootView: View {
       }
     }
     .animation(reduceMotion || reduceInterfaceMotion ? nil : .snappy(duration: 0.22), value: model.errorMessage != nil)
-    .safeAreaInset(edge: .bottom, spacing: 0) {
+    .overlay {
       if model.sessionState == .ready { CallDockView() }
     }
     .quickLookPreview(Binding(get: { model.previewFileURL }, set: { model.previewFileURL = $0 }))

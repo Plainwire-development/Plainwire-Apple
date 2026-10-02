@@ -1,4 +1,26 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
+
+/// Keeps a floating call panel reachable after dragging, resizing, or rotating.
+public struct PWCallPanelLayout: Equatable, Sendable {
+  public let size: CGSize
+  public let origin: CGPoint
+
+  public init(container: CGSize, preferredSize: CGSize, origin: CGPoint? = nil) {
+    let inset: CGFloat = 12
+    let availableWidth = max(1, container.width - inset * 2)
+    let availableHeight = max(1, container.height - inset * 2)
+    size = CGSize(width: min(availableWidth, max(320, preferredSize.width)),
+      height: min(availableHeight, max(100, preferredSize.height)))
+    let maximumX = max(inset, container.width - size.width - inset)
+    let maximumY = max(inset, container.height - size.height - inset)
+    let requested = origin ?? CGPoint(x: maximumX, y: maximumY)
+    self.origin = CGPoint(x: min(maximumX, max(inset, requested.x)),
+      y: min(maximumY, max(inset, requested.y)))
+  }
+}
 
 /// The room identity accompanies every server event. Never apply a late event
 /// from a previous room to the current call.

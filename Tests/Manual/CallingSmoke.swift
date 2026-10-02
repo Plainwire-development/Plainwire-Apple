@@ -12,6 +12,11 @@ import AVFoundation
     call.userID = 8
     call.receive(.init(type: "call_incoming", payload: ["conversation_id": .int(42), "invite_id": .string("invite-1")]))
     try check(call.incoming?.id == 42, "Incoming call was not shown")
+    call.receive(.init(type: "call_incoming", payload: ["conversation_id": .int(99), "invite_id": .string("second-invite")]))
+    try await waitUntil { commands.contains { $0["invite_id"] == .string("second-invite") } }
+    try check(call.incoming?.id == 42, "Second invitation replaced the unanswered call")
+    call.receive(.init(type: "call_cancelled", payload: ["conversation_id": .int(42), "invite_id": .string("older-invite")]))
+    try check(call.incoming?.token == "invite-1", "Stale invitation token dismissed a new call")
     await call.decline()
     try check(commands.last?["type"] == .string("call_decline") && commands.last?["invite_id"] == .string("invite-1"), "Decline lost the invitation token")
 
@@ -27,6 +32,19 @@ import AVFoundation
     await call.end()
     try await Task.sleep(for: .milliseconds(150))
     try check(call.room == nil && call.localVideo == nil && call.peers.isEmpty, "Cancelled startup resurrected media")
+
+    // A dead socket must invalidate startup before its permission result arrives.
+    call.start(kind: .voice, id: 9, title: "Lounge", userID: 8)
+    try await Task.sleep(for: .milliseconds(20))
+    call.connectionChanged(.reconnecting(1))
+    try await Task.sleep(for: .milliseconds(150))
+    try check(call.room?.id == 9 && call.localVideo == nil, "Disconnected startup restored capture")
+    call.connectionChanged(.connected)
+    try await Task.sleep(for: .milliseconds(20))
+    call.connectionChanged(.reconnecting(1))
+    try await Task.sleep(for: .milliseconds(150))
+    try check(call.room?.id == 9 && call.localVideo == nil, "A second disconnect restored capture during reconnect")
+    await call.end()
 
     call.receive(.init(type: "call_incoming", payload: ["conversation_id": .int(42)]))
     call.receive(.init(type: "call_cancelled", payload: ["conversation_id": .int(99)]))

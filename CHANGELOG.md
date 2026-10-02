@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.1.1
+
+- Fixed friends incorrectly showing “Presence unavailable” when omitted from the server’s sparse snapshot. Offline status now requires a completed live watch snapshot; disconnected and newly watched users remain unknown until refreshed.
+- Added legacy online-list snapshots, live profile watches, self presence updates, and presence/subscription recovery after a server realtime resync.
+- Replaced the fixed call dock with a floating panel: drag its top handle, resize its lower-right corner, minimize it, or reset it from the panel menu. Video tiles follow the panel width and controls remain available while content scrolls.
+- Preserved unanswered invitations when another caller rings, ignored stale invitation tokens, cancelled startup and timers on disconnect, and cleared old signals on reconnect.
+- Bumped bundle, About, client user-agent, and build versions together. Added presence, panel-boundary, and calling lifecycle regression checks.
+
 ## 2.1.0
 
 - Removed the Mac settings sidebar entry. Use ⌘, or the app menu; iPhone and iPad keep touch access.

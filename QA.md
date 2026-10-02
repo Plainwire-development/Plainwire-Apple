@@ -97,3 +97,12 @@ For the presence fix, disconnect the second account and verify that Friends, pro
 - On iOS, background the app during a call. Confirm capture stops and the call ends; return and check native chat reconnects. Background calling is not included in 2.1.
 - On macOS/iOS 26 or newer, verify native Liquid Glass switches with keyboard, VoiceOver, increased contrast, and Reduce Motion. On macOS 15/iOS 18, verify ordinary native switches and fallback buttons.
 - Check Mac Settings via ⌘, and the app menu. Check the five iPhone tabs and iPad touch settings access. Open secondary tools from the More tools menu or You → More tools.
+
+## 2.1.1 presence and floating calls
+
+- With one friend online and another disconnected, verify Friends and profile/member panels show Online and Offline. Open a searched person's profile, verify presence updates, close it, and reopen it.
+- Disconnect the observing client: presence should become unavailable until its new snapshot. Restore networking and verify status, platform badges, and call media recover. Change the selected profile status to Away, Busy, or Invisible and check from another account.
+- Exercise a server realtime registry restart. Verify unchanged presence watches and room subscriptions are restored and chat catches up.
+- Drag the call panel to every window edge, grow/shrink it from its lower-right corner, minimize/expand, resize the main window, and rotate an iPad/iPhone. Confirm controls remain reachable, video follows the panel width, and chat outside the panel remains interactive.
+- Use Small panel, Large panel, and Reset position and size. Verify keyboard/VoiceOver menu access and the resize handle's adjustable action.
+- Receive a second invitation while the first is unanswered; verify the original remains and the second is declined. Disconnect during microphone permission/startup, then reconnect or hang up; capture must not return from stale work.
