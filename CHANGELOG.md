@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.1.0
+
+- Removed the Mac settings sidebar entry. Use ⌘, or the app menu; iPhone and iPad keep touch access.
+- Replaced custom settings switches with native SwiftUI switches for system Liquid Glass on supported releases and standard controls on older systems.
+- Added native WebRTC direct/group calling and server voice channels with incoming answer/decline, mute, deafen, camera video, native Metal rendering, reconnect, and hang-up controls. Calls stay in a compact dock while navigating the app.
+- Calls use the existing Swift API/realtime connection and native media capture, with no web calling dependency or backend changes. iOS ends calls on backgrounding.
+- Moved Workspace out of primary navigation and into a secondary tools sheet for features without native screens.
+- Updated the bundle, build, About, and client user-agent versions together; added release consistency checks and native calling regression/smoke coverage.
+
 ## 2.0.3
 
 - Scrolling over an inline video on Mac now scrolls the chat. Hold Option (⌥) while scrolling to seek through the video.

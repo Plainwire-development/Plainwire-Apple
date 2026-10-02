@@ -4,6 +4,20 @@
 	classes = {};
 	objectVersion = 56;
 	objects = {
+        C21300000000000000000001 /* WebRTC-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Resources/WebRTC-LICENSE.txt"; sourceTree = SOURCE_ROOT; };
+        C21300000000000000000002 /* WebRTC-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = C21300000000000000000001; };
+        C21100000000000000000003 /* CallDockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Calling/CallDockView.swift"; sourceTree = SOURCE_ROOT; };
+        C21200000000000000000003 /* CallDockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21100000000000000000003; };
+        C21100000000000000000002 /* CallController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Calling/CallController.swift"; sourceTree = SOURCE_ROOT; };
+        C21200000000000000000002 /* CallController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21100000000000000000002; };
+        C21100000000000000000001 /* NativeCallPeer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Calling/NativeCallPeer.swift"; sourceTree = SOURCE_ROOT; };
+        C21200000000000000000001 /* NativeCallPeer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21100000000000000000001; };
+        C21100000000000000000000 /* Calling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/PlainwireCore/Calling.swift"; sourceTree = SOURCE_ROOT; };
+        C21200000000000000000000 /* Calling.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21100000000000000000000; };
+        C21000000000000000000001 /* WebRTC */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/stasel/WebRTC.git"; requirement = {kind = exactVersion; version = 154.0.0; }; };
+        C21000000000000000000002 /* WebRTC */ = {isa = XCSwiftPackageProductDependency; package = C21000000000000000000001; productName = WebRTC; };
+        C21000000000000000000003 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = C21000000000000000000002; };
+
 		5DD10E2A3338A660D1D774DD /* TransferPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08C9012F70F19CEAA395F17A /* TransferPolicy.swift */; };
 		08C9012F70F19CEAA395F17A /* TransferPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/PlainwireCore/TransferPolicy.swift"; sourceTree = SOURCE_ROOT; };
 		9763DB8474B2C333F37F5E74 /* Presence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 404A46639A00D266E8296766 /* Presence.swift */; };
@@ -69,8 +83,12 @@
 		6F0F39BF4E38A28B6840C428 /* Plainwire-macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Resources/Plainwire-macOS.entitlements"; sourceTree = SOURCE_ROOT; };
 		A1B2C3D4E5F6012345678902 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = "Resources/PrivacyInfo.xcprivacy"; sourceTree = SOURCE_ROOT; };
 		AEF63687048485D45524643C /* Plainwire.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Plainwire.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		7B8633C7EB6F5CB13673C25D /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		7B8633C7EB6F5CB13673C25D /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (C21000000000000000000003 /* WebRTC in Frameworks */); runOnlyForDeploymentPostprocessing = 0; };
 		E4F78730D65EE9F55E2BAC2F /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
+            C21200000000000000000003 /* CallDockView.swift in Sources */,
+            C21200000000000000000002 /* CallController.swift in Sources */,
+            C21200000000000000000001 /* NativeCallPeer.swift in Sources */,
+            C21200000000000000000000 /* Calling.swift in Sources */,
 			5DD10E2A3338A660D1D774DD /* TransferPolicy.swift in Sources */,
 			9763DB8474B2C333F37F5E74 /* Presence.swift in Sources */,
 			E955BF46F10E2709C03AA3A8 /* MediaPlayback.swift in Sources */,
@@ -102,11 +120,16 @@
 			3DB9592CA63E58D2BF8DD6F4 /* Realtime.swift in Sources */,
 		); runOnlyForDeploymentPostprocessing = 0; };
 		C52ABA055DA4D0050382EB56 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (
+            C21300000000000000000002 /* WebRTC-LICENSE.txt in Resources */,
 			627BBC9C62B0C159B656E415 /* Assets.xcassets in Resources */,
 			A1B2C3D4E5F6012345678901 /* PrivacyInfo.xcprivacy in Resources */,
 		); runOnlyForDeploymentPostprocessing = 0; };
 		6CFC827E67DCAE34C72B9CED = {isa = PBXGroup; children = (932704417AB46D25E8F18983 /* Sources */, D4ED70D4D27623DE041795FF /* Resources */, 021F2B7F3E0C61452C987484 /* Products */); sourceTree = "<group>"; };
 		932704417AB46D25E8F18983 /* Sources */ = {isa = PBXGroup; children = (
+            C21100000000000000000003 /* CallDockView.swift */,
+            C21100000000000000000002 /* CallController.swift */,
+            C21100000000000000000001 /* NativeCallPeer.swift */,
+            C21100000000000000000000 /* Calling.swift */,
 			08C9012F70F19CEAA395F17A /* TransferPolicy.swift */,
 			404A46639A00D266E8296766 /* Presence.swift */,
 			501E79F1C04C548AA9337F29 /* MediaPlayback.swift */,
@@ -137,10 +160,10 @@
 			7650C688922D8B390B54D72B /* PlatformImports.swift */,
 			624886F9855EB70028E90E8F /* Realtime.swift */,
 		); name = Sources; sourceTree = "<group>"; };
-		D4ED70D4D27623DE041795FF /* Resources */ = {isa = PBXGroup; children = (9CCD11486CB5CFFBAC839C56 /* Assets.xcassets */, F2A202B54F237E9B2ECC0ACF /* Info.plist */, 6F0F39BF4E38A28B6840C428 /* Plainwire-macOS.entitlements */, A1B2C3D4E5F6012345678902 /* PrivacyInfo.xcprivacy */); name = Resources; sourceTree = "<group>"; };
+		D4ED70D4D27623DE041795FF /* Resources */ = {isa = PBXGroup; children = (C21300000000000000000001 /* WebRTC-LICENSE.txt */, 9CCD11486CB5CFFBAC839C56 /* Assets.xcassets */, F2A202B54F237E9B2ECC0ACF /* Info.plist */, 6F0F39BF4E38A28B6840C428 /* Plainwire-macOS.entitlements */, A1B2C3D4E5F6012345678902 /* PrivacyInfo.xcprivacy */); name = Resources; sourceTree = "<group>"; };
 		021F2B7F3E0C61452C987484 /* Products */ = {isa = PBXGroup; children = (AEF63687048485D45524643C /* Plainwire.app */); name = Products; sourceTree = "<group>"; };
-		0E8A3AD980EC179856012B7E /* Plainwire */ = {isa = PBXNativeTarget; buildConfigurationList = E631DC8803DAA0784D7E8DD2 /* Build configuration list for PBXNativeTarget "Plainwire" */; buildPhases = (E4F78730D65EE9F55E2BAC2F /* Sources */, 7B8633C7EB6F5CB13673C25D /* Frameworks */, C52ABA055DA4D0050382EB56 /* Resources */); buildRules = (); dependencies = (); name = Plainwire; productName = Plainwire; productReference = AEF63687048485D45524643C /* Plainwire.app */; productType = "com.apple.product-type.application"; };
-		98F54143AB4E86B28C3AFEE0 /* Project object */ = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 2600; LastUpgradeCheck = 2600; TargetAttributes = {0E8A3AD980EC179856012B7E = {CreatedOnToolsVersion = 26.0; }; }; }; buildConfigurationList = 45A6A88DC85623F57ECF575D /* Build configuration list for PBXProject "Plainwire" */; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base); mainGroup = 6CFC827E67DCAE34C72B9CED; productRefGroup = 021F2B7F3E0C61452C987484 /* Products */; projectDirPath = ""; projectRoot = ""; targets = (0E8A3AD980EC179856012B7E /* Plainwire */); };
+		0E8A3AD980EC179856012B7E /* Plainwire */ = {isa = PBXNativeTarget; buildConfigurationList = E631DC8803DAA0784D7E8DD2 /* Build configuration list for PBXNativeTarget "Plainwire" */; buildPhases = (E4F78730D65EE9F55E2BAC2F /* Sources */, 7B8633C7EB6F5CB13673C25D /* Frameworks */, C52ABA055DA4D0050382EB56 /* Resources */); buildRules = (); dependencies = (); name = Plainwire; packageProductDependencies = (C21000000000000000000002 /* WebRTC */); productName = Plainwire; productReference = AEF63687048485D45524643C /* Plainwire.app */; productType = "com.apple.product-type.application"; };
+		98F54143AB4E86B28C3AFEE0 /* Project object */ = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 2600; LastUpgradeCheck = 2600; TargetAttributes = {0E8A3AD980EC179856012B7E = {CreatedOnToolsVersion = 26.0; }; }; }; buildConfigurationList = 45A6A88DC85623F57ECF575D /* Build configuration list for PBXProject "Plainwire" */; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base); mainGroup = 6CFC827E67DCAE34C72B9CED; productRefGroup = 021F2B7F3E0C61452C987484 /* Products */; packageReferences = (C21000000000000000000001 /* WebRTC */); projectDirPath = ""; projectRoot = ""; targets = (0E8A3AD980EC179856012B7E /* Plainwire */); };
 		5E8ACABCCBE1DB5D311988C9 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {
 			ALWAYS_SEARCH_USER_PATHS = NO;
 			CLANG_ENABLE_MODULES = YES;
@@ -207,13 +230,14 @@
 			ASSETCATALOG_COMPILER_ACCENT_COLOR_NAME = AccentColor;
 			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 			CODE_SIGN_STYLE = Automatic;
-			CURRENT_PROJECT_VERSION = 8;
+			CURRENT_PROJECT_VERSION = 9;
 			ENABLE_PREVIEWS = YES;
 			GENERATE_INFOPLIST_FILE = NO;
 			INFOPLIST_FILE = Resources/Info.plist;
 			IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 			MACOSX_DEPLOYMENT_TARGET = 15.0;
-			MARKETING_VERSION = 2.0.3;
+			MARKETING_VERSION = 2.1.0;
+            LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../Frameworks";
 			PRODUCT_BUNDLE_IDENTIFIER = me.kokonico.plainwire;
 			PRODUCT_NAME = "$(TARGET_NAME)";
 			SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
@@ -230,13 +254,14 @@
 			ASSETCATALOG_COMPILER_ACCENT_COLOR_NAME = AccentColor;
 			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 			CODE_SIGN_STYLE = Automatic;
-			CURRENT_PROJECT_VERSION = 8;
+			CURRENT_PROJECT_VERSION = 9;
 			ENABLE_PREVIEWS = YES;
 			GENERATE_INFOPLIST_FILE = NO;
 			INFOPLIST_FILE = Resources/Info.plist;
 			IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 			MACOSX_DEPLOYMENT_TARGET = 15.0;
-			MARKETING_VERSION = 2.0.3;
+			MARKETING_VERSION = 2.1.0;
+            LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../Frameworks";
 			PRODUCT_BUNDLE_IDENTIFIER = me.kokonico.plainwire;
 			PRODUCT_NAME = "$(TARGET_NAME)";
 			SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";

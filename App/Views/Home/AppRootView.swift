@@ -3,6 +3,9 @@ import QuickLook
 
 struct AppRootView: View {
   @Environment(AppModel.self) private var model
+  #if os(macOS)
+    @Environment(\.openSettings) private var openSettings
+  #endif
   @Environment(\.horizontalSizeClass) private var horizontalSizeClass
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @AppStorage(AppPreferenceKeys.reduceInterfaceMotion) private var reduceInterfaceMotion = false
@@ -33,6 +36,9 @@ struct AppRootView: View {
       }
     }
     .animation(reduceMotion || reduceInterfaceMotion ? nil : .snappy(duration: 0.22), value: model.errorMessage != nil)
+    .safeAreaInset(edge: .bottom, spacing: 0) {
+      if model.sessionState == .ready { CallDockView() }
+    }
     .quickLookPreview(Binding(get: { model.previewFileURL }, set: { model.previewFileURL = $0 }))
     .environment(\.openURL, OpenURLAction { url in
       if url.scheme == "plainwire" || (url.host == PlainwireConfiguration().baseURL.host && url.fragment != nil) {
@@ -49,17 +55,26 @@ struct AppRootView: View {
     .sheet(isPresented: Binding(get: { model.showNewConversation }, set: { model.showNewConversation = $0 })) {
       NewConversationSheet()
     }
-    .onChange(of: model.selectedSection) { oldSection, newSection in
-      Task { await model.sectionDidChange(newSection) }
-      if oldSection == .workspace && newSection != .workspace {
-        Task {
-          if let serverID = model.selectedServerID {
-            await model.reloadServer(serverID)
-          } else {
-            await model.refresh()
+    .sheet(isPresented: Binding(get: { model.showWorkspace }, set: { model.showWorkspace = $0 })) {
+      NavigationStack {
+        WebWorkspaceView()
+          .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+              Button("Done") { model.showWorkspace = false }
+            }
           }
-        }
+      }.adaptiveSheetSize(minWidth: 800, minHeight: 620)
+    }
+    .onChange(of: model.showWorkspace) { _, shown in
+      if !shown { Task { await model.refresh() } }
+    }
+    #if os(macOS)
+      .onChange(of: model.showSettings) { _, shown in
+        if shown { model.showSettings = false; openSettings() }
       }
+    #endif
+    .onChange(of: model.selectedSection) { _, section in
+      Task { await model.sectionDidChange(section) }
     }
   }
 
@@ -153,8 +168,6 @@ private struct CompactRootView: View {
       NavigationStack { ActivityView() }
         .tabItem { Label("Activity", systemImage: "bell.fill") }.tag(AppModel.Section.activity)
         .badge(model.unreadActivityCount)
-      NavigationStack { WebWorkspaceView() }
-        .tabItem { Label("Workspace", systemImage: "square.grid.2x2.fill") }.tag(AppModel.Section.workspace)
       NavigationStack { SettingsView() }
         .tabItem { Label("You", systemImage: "person.crop.circle.fill") }.tag(
           AppModel.Section.settings)
@@ -179,7 +192,7 @@ private struct SplitRootView: View {
     switch model.selectedSection {
     case .messages, .servers:
       threeColumnRoot
-    case .friends, .activity, .workspace, .settings:
+    case .friends, .activity, .settings:
       twoColumnRoot
     }
   }
@@ -217,8 +230,6 @@ private struct SplitRootView: View {
         ActivityView()
       case .settings:
         SettingsView(showNavigationTitle: true, detailPresentation: true)
-      case .workspace:
-        WebWorkspaceView()
       case .messages, .servers:
         EmptyView()
       }
@@ -230,7 +241,7 @@ private struct SplitRootView: View {
     switch model.selectedSection {
     case .messages: ConversationListView(compactNavigation: false)
     case .servers: ServerChannelBrowserView()
-    case .friends, .activity, .workspace, .settings: EmptyView()
+    case .friends, .activity, .settings: EmptyView()
     }
   }
 }

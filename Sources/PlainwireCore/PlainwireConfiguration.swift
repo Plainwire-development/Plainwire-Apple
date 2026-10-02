@@ -1,7 +1,7 @@
 import Foundation
 
 public enum PlainwireClientInfo {
-  public static let version = "2.0.2"
+  public static let version = "2.1.0"
   public static var platform: String {
     #if os(macOS)
       "macos"

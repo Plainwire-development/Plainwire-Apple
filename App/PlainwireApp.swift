@@ -39,7 +39,15 @@ struct PlainwireApp: App {
           Button("Friends") { model.selectedSection = .friends }
             .keyboardShortcut("3", modifiers: .command)
           Button("Activity") { model.selectedSection = .activity }.keyboardShortcut("4", modifiers: .command)
-          Button("Workspace") { model.openWorkspace() }.keyboardShortcut("5", modifiers: .command)
+          Button("Call Conversation") {
+            if let room = model.selectedRoom { model.startCall(in: room) }
+          }.keyboardShortcut("k", modifiers: [.command, .shift])
+            .disabled(model.sessionState != .ready || model.selectedRoom?.scope != "direct")
+          Button("End Call") { Task { await model.calls.end() } }
+            .disabled(!model.calls.hasCall)
+          Divider()
+          Button("Forums") { model.openWorkspace(fragment: "forums") }
+          Button("Source Hub") { model.openWorkspace(fragment: "source") }
         }
       }
       Settings {

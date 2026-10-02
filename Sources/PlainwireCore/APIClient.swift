@@ -43,6 +43,10 @@ public actor PlainwireAPIClient {
 
   public func currentCSRFToken() -> String? { csrfToken }
 
+  public func rtcConfiguration() async throws -> JSONValue {
+    try await get("rtc-config")
+  }
+
   @discardableResult
   public func restoreSession() async throws -> PWSession {
     let session: PWSession = try await get("me")

@@ -42,16 +42,20 @@ Open `Plainwire.xcodeproj` in Xcode, select the `Plainwire` scheme, choose a sim
 
 ## What it does
 
-This checkout includes the 2.0.3 Mac video scrolling update and the playback, presence, and reliability fixes from 2.0.2. On Mac, regular scrolling over videos moves the chat; Option (⌥)-scroll seeks when enabled in You → Chat. See [the changelog](CHANGELOG.md), [the client audit](AUDIT.md), and [2.0 release notes](RELEASE_NOTES_2.0.0.md) for the changes and validation status.
+This checkout is version **2.1.0**. On Mac, open Settings with **⌘,** or Plainwire → Settings; settings no longer occupy the sidebar. iPhone and iPad retain the You entry. Settings use native SwiftUI switches, which adopt Liquid Glass on supported systems and the standard appearance on older systems. Option (⌥)-scroll seeks inline videos when enabled in Settings → Chat. See [the changelog](CHANGELOG.md) and [2.1 release notes](RELEASE_NOTES_2.1.0.md).
 
 Plainwire supports direct and group messages, channels, friends, reactions, replies, forwarding, pins, message search, message requests, an activity inbox, file uploads, attachment previews, voice-note recording and playback, spoiler text and attachments, inline video, and live presence. Room drafts survive navigation and relaunch and are cleared when you sign out. You can view other members' profiles, edit your own profile and images, manage account credentials and sessions, and create, join, and customize servers. Group controls include names, members, moderators, and leaving or closing a conversation. Server controls include appearance, your server profile, channels, slow mode, categories, members, and invite links. Images are cached and resized for the screen. On Mac and iPad, conversations use a wider split view; iPhone uses tabs.
 
-The Workspace tab opens the complete Plainwire web client inside the app with your active session. It provides advanced features that do not yet have native screens, including developer tools and the web calling interface. Microphone and camera access are requested when those web features need them; live media also depends on WebKit and device permissions. The workspace is retained while browsing native sections. Live calling controls are provided by the web frontend. Notifications work while the app is running; background push on iPhone still needs APNs delivery.
+Direct and group calls and server voice channels run in the Swift app using native WebRTC. Start a call from a conversation, answer the incoming call card, or select a server voice channel. The call dock provides microphone, deafen, camera, hang-up, and minimize controls while you browse chats. Call signaling uses the existing authenticated Swift realtime client; microphone and camera permission are requested by the native app. Calls do not load a web page or use Workspace. On iPhone and iPad, calls end when the app enters the background; background calling and incoming push require further platform integration.
+
+Forums, Source Hub, developer apps, and remaining advanced server features are secondary tools opened in an authenticated web sheet. On Mac, find them under the sidebar’s More tools menu; on iPhone and iPad, use You → More tools. Notifications work while the app is running; background push on iPhone still needs APNs delivery.
 
 ## Development
 
-Run `./scripts/verify.sh` for core tests and project checks. The SwiftUI app also needs an Xcode build; both Mac and iOS Simulator builds run in CI.
+Run `./scripts/verify.sh` for core tests and project checks. Run `./scripts/verify-calling.sh` on Mac to exercise native call lifecycle and a local WebRTC connection. The SwiftUI app also needs an Xcode build; both Mac and iOS Simulator builds run in CI.
 
 To publish a release, update the app version in Xcode and push a matching tag such as `1.2.0` or `v1.2.0`. Creating a tag on GitHub works too. The release workflow builds a universal Mac app, checks both architectures, and uploads the ZIP, checksum, and installer. It also checks the newest version tag when the workflow itself changes, so an earlier tag can be picked up.
+
+The app pins [WebRTC 154.0.0](https://github.com/stasel/WebRTC/tree/154.0.0) as an Xcode Swift package dependency; Xcode verifies the binary artifact checksum. The WebRTC license is included in the app bundle.
 
 The app code is in `App/`, the API and realtime client are in `Sources/PlainwireCore/`, and core tests are in `Tests/PlainwireCoreTests/`. See [ARCHITECTURE.md](ARCHITECTURE.md) for the data flow and [QA.md](QA.md) for manual checks.

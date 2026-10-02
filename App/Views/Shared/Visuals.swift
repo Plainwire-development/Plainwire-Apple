@@ -324,50 +324,11 @@ struct AdaptiveGlassButtonModifier: ViewModifier {
   }
 }
 
-@available(iOS 26.0, macOS 26.0, *)
-private struct LiquidGlassSwitchToggleStyle: ToggleStyle {
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @AppStorage(AppPreferenceKeys.reduceInterfaceMotion) private var reduceInterfaceMotion = false
-  func makeBody(configuration: Configuration) -> some View {
-    Button {
-      withAnimation(reduceMotion || reduceInterfaceMotion ? nil : .snappy(duration: 0.2)) { configuration.isOn.toggle() }
-    } label: {
-      HStack(spacing: 12) {
-        configuration.label
-        Spacer(minLength: 16)
-        ZStack {
-          Capsule(style: .continuous)
-            .fill(
-              configuration.isOn ? Color.accentColor.opacity(0.16) : Color.primary.opacity(0.045))
-          Circle()
-            .fill(.primary.opacity(configuration.isOn ? 0.96 : 0.72))
-            .padding(3.5)
-            .frame(width: 27, height: 27)
-            .offset(x: configuration.isOn ? 9 : -9)
-        }
-        .frame(width: 48, height: 30)
-        .glassEffect(
-          .regular
-            .tint(configuration.isOn ? Color.accentColor.opacity(0.52) : nil)
-            .interactive(),
-          in: Capsule(style: .continuous)
-        )
-        .accessibilityHidden(true)
-      }
-      .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .accessibilityValue(configuration.isOn ? "On" : "Off")
-  }
-}
-
+// System switches adopt Liquid Glass on iOS/macOS 26 and retain native
+// keyboard, accessibility, dragging, and Reduce Motion behavior on every OS.
 private struct AdaptiveGlassToggleModifier: ViewModifier {
-  @ViewBuilder func body(content: Content) -> some View {
-    if #available(iOS 26.0, macOS 26.0, *) {
-      content.toggleStyle(LiquidGlassSwitchToggleStyle())
-    } else {
-      content.toggleStyle(.switch)
-    }
+  func body(content: Content) -> some View {
+    content.toggleStyle(.switch).tint(.accentColor)
   }
 }
 

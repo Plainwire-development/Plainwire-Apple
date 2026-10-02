@@ -6,3 +6,5 @@ xcuserdata/
 .build-artifacts/
 .swiftpm/
 Package.resolved
+
+!Plainwire.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved

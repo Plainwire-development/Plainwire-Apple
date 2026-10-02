@@ -88,9 +88,9 @@ struct ChatView: View {
           if groupConversationID != nil {
             Button("Conversation Settings", systemImage: "gearshape") { showingConversationSettings = true }
           }
-          if let room = model.selectedRoom {
-            Button("Calling Controls", systemImage: "phone") {
-              model.openWorkspace(fragment: "\(room.scope == "direct" ? "dm" : "channel")/\(room.roomID)")
+          if let room = model.selectedRoom, room.scope == "direct" {
+            Button("Start Call", systemImage: "phone") {
+              model.startCall(in: room)
             }
           }
         } label: { Image(systemName: "ellipsis.circle") }
@@ -570,10 +570,10 @@ private struct ChatRoomHeader: View {
       // Advanced room tools are also available from the compact toolbar.
       Button { model.showMessageSearch = true } label: { Image(systemName: "magnifyingglass") }
         .buttonStyle(.plain).help("Search messages").accessibilityLabel("Search messages")
-      if let room = model.selectedRoom {
-        Button { model.openWorkspace(fragment: "\(room.scope == "direct" ? "dm" : "channel")/\(room.roomID)") }
+      if let room = model.selectedRoom, room.scope == "direct" {
+        Button { model.startCall(in: room) }
           label: { Image(systemName: "phone") }
-          .buttonStyle(.plain).help("Open calling controls").accessibilityLabel("Open calling controls")
+          .adaptiveGlassButton().help("Start call").accessibilityLabel("Start call")
       }
       if showsMemberButton {
         Button(action: onToggleMembers) {

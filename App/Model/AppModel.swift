@@ -9,7 +9,7 @@ import FoundationNetworking
 final class AppModel {
   enum SessionState: Equatable { case booting, signedOut, ready, unavailable }
   enum Section: String, CaseIterable, Identifiable {
-    case messages, servers, friends, activity, workspace, settings
+    case messages, servers, friends, activity, settings
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
     var systemImage: String {
@@ -18,7 +18,6 @@ final class AppModel {
       case .servers: "rectangle.3.group.fill"
       case .friends: "person.2.fill"
       case .activity: "bell.fill"
-      case .workspace: "square.grid.2x2.fill"
       case .settings: "gearshape.fill"
       }
     }
@@ -97,10 +96,14 @@ final class AppModel {
   var replyTarget: PWMessage?
   var showMessageSearch = false
   var showNewConversation = false
+  var recordingVoiceNote = false
   var navigationRoom: Room?
   var messageJumpID: PlainwireID?
   var contextRooms = Set<String>()
   var workspace = WorkspaceController()
+  var showWorkspace = false
+  var showSettings = false
+  var calls = CallController()
   var unreadActivityCount: Int { notifications.filter { !$0.seen }.count }
   var unreadMessageCount: Int { conversations.reduce(0) { $0 + max(0, $1.unread) } }
 
@@ -136,6 +139,11 @@ final class AppModel {
   init() {
     api = PlainwireAPIClient(configuration: config)
     realtime = PlainwireRealtimeClient(configuration: config)
+    calls.send = { [weak self] payload in
+      guard let self, self.sessionState == .ready else { return }
+      try await self.realtime.send(payload)
+    }
+    calls.loadConfiguration = { [api] in try await api.rtcConfiguration() }
   }
 
   private var draftStorageKey: String? {
@@ -233,6 +241,10 @@ final class AppModel {
   func logout() async {
     guard !signingOut, sessionState != .signedOut || session != nil else { return }
     signingOut = true
+    await calls.end()
+    calls.reset()
+    showWorkspace = false
+    showSettings = false
     sessionState = .signedOut
     isBusy = true
     defer { isBusy = false; signingOut = false }
@@ -333,6 +345,7 @@ final class AppModel {
   }
 
   func prepareForBackground() async {
+    await calls.end()
     flushDrafts()
     typingStopTask?.cancel()
     typingStopTask = nil
@@ -864,7 +877,21 @@ final class AppModel {
 
   func openWorkspace(fragment: String? = nil) {
     workspace.route(fragment)
-    selectedSection = .workspace
+    showWorkspace = true
+  }
+
+  func startCall(in room: Room) {
+    guard !recordingVoiceNote else { errorMessage = "Finish recording your voice note before starting a call."; return }
+    guard room.scope == "direct" else {
+      errorMessage = "Choose a voice channel from your server to join a call."
+      return
+    }
+    calls.start(kind: .direct, id: room.roomID, title: room.title, userID: session?.user.id ?? 0)
+  }
+
+  func joinVoice(_ channel: PWChannel) {
+    guard !recordingVoiceNote else { errorMessage = "Finish recording your voice note before joining voice."; return }
+    calls.start(kind: .voice, id: channel.id, title: channel.name, userID: session?.user.id ?? 0)
   }
 
   func openConversation(_ conversation: PWConversation) async {
@@ -1266,7 +1293,27 @@ final class AppModel {
   private func routeDeepLink(parts: [String]) async {
     let generation = sessionGeneration
     guard !parts.isEmpty else { return }
-    if let first = parts.first, ["wire", "invite", "voice", "forums", "f", "t", "thread", "source", "profile", "settings"].contains(first) {
+    if parts.first == "settings" {
+      #if os(macOS)
+        showSettings = true
+      #else
+        selectedSection = .settings
+      #endif
+      return
+    }
+    if parts.first == "voice", parts.count > 1, let id = Int64(parts[1]) {
+      for server in servers {
+        await ensureServerDetails(server.id)
+        guard generation == sessionGeneration, !Task.isCancelled else { return }
+        if let channel = serverDetails[server.id]?.channels.first(where: { $0.id == id && $0.kind == "voice" }) {
+          joinVoice(channel)
+          return
+        }
+      }
+      errorMessage = "This voice channel is unavailable."
+      return
+    }
+    if let first = parts.first, ["wire", "invite", "forums", "f", "t", "thread", "source", "profile"].contains(first) {
       openWorkspace(fragment: parts.joined(separator: "/"))
       return
     }
@@ -1415,6 +1462,7 @@ final class AppModel {
         switch update {
         case .state(let state):
           self.realtimeState = state
+          self.calls.connectionChanged(state)
           if state != .connected {
             self.presence.reset()
             self.typingExpiryTasks.values.forEach { $0.cancel() }
@@ -1428,7 +1476,12 @@ final class AppModel {
   }
 
   private func handle(_ event: PlainwireRealtimeEvent) async {
-    guard sessionState == .ready else { return }
+    guard sessionState == .ready, !signingOut else { return }
+    calls.userID = session?.user.id ?? 0
+    let callTitle = event.conversationID.flatMap { id in
+      conversations.first(where: { $0.id == id }).map(conversationDisplayName)
+    }
+    calls.receive(event, title: callTitle)
     switch event.type {
     case "hello":
       if let refreshed = event.session { session = refreshed }

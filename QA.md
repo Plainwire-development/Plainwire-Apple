@@ -26,7 +26,7 @@ For the presence fix, disconnect the second account and verify that Friends, pro
 - Install a downloaded bundle with `--app`, then upgrade it with another bundle. Confirm the app opens and only the installed Plainwire bundle has its quarantine attribute removed.
 - Run the README updater against an installed older version. Confirm it verifies the release, quits the running app, swaps it, and reopens the new version. Run it again and confirm it skips the download.
 - Try an invalid release tag and a corrupt archive in a test destination. Confirm the existing app is intact and launches afterward.
-- Resize the window and use the sidebar and keyboard shortcuts. Check Settings at the minimum window size.
+- Resize the window and use the sidebar and keyboard shortcuts. Open Settings with ⌘, and from the app menu at the minimum window size; confirm there is no settings button in the Mac sidebar.
 
 ## Account and chat
 
@@ -48,7 +48,7 @@ For the presence fix, disconnect the second account and verify that Friends, pro
 - Create and share an invite. Join from another account by pasting the code or link, then revoke it and confirm it can no longer be used.
 - Open server settings on Mac and iPhone. Visit each section, edit appearance and profile, and verify invite lists load when `channel_id` is a string.
 - Open Workspace after signing in. Confirm it opens without a second login. Change a setting there, return to a native tab, and confirm it refreshes. Sign out in Workspace and confirm the native app signs out.
-- Check web voice/video permissions on real Mac and iOS devices if you use live calls.
+- Check native microphone/camera/local-network permission denial and recovery on real Mac and iOS devices.
 
 ## Attachments
 
@@ -83,5 +83,17 @@ For the presence fix, disconnect the second account and verify that Friends, pro
 - Record, cancel, stop, and attach voice notes. Test denied microphone access, the two-minute limit, interruptions/backgrounding, and playback after scrolling out of view.
 - Open a protected PDF and image in Quick Look. Confirm downloads use the app session. Test names with spaces and Unicode, unavailable files, large files, and drag-and-drop uploads.
 - Check text spoilers, an image inside a spoiler sentence, isolated spoiler attachments, and attachment syntax inside inline/fenced code. Hidden attachments must not load before reveal.
-- Open a voice channel from native navigation, change sections during a live call, and return. Exercise web dialogs, a ban-reason prompt, uploads, downloads, reload errors, microphone/camera permissions, and external links. Check calls on real devices.
+- Open a voice channel from native navigation, change sections during a live call, and return. Separately exercise secondary tool dialogs, uploads, downloads, reload errors, and external links. Check native calls on real devices.
 - Resize the Mac window, switch appearance, enable Reduce Motion, and use VoiceOver and larger text. Check member-panel/composer animations, hover actions, keyboard commands, and all sheets on a narrow iPhone.
+
+## 2.1 native calling and navigation
+
+- Run `./scripts/verify-calling.sh` on Mac. It builds the app, checks invitation tokens and permission/startup cancellation, then negotiates native SDP/ICE between two local peers with capture tracks disabled. It does not contact Plainwire.
+- Call between two signed-in accounts in both directions, including a Swift client and an existing Plainwire client. Check ringing, answer, decline, missed/cancelled calls, and group call membership.
+- Join a server voice channel. Check mute, deafen restoring the prior mute state, participants leaving/rejoining, camera on/off, and native remote video.
+- Minimize the call and browse Messages, Servers, Friends, and Activity. Open and close a sheet during a call. Confirm audio persists and Workspace never opens for calling.
+- Drop the network, restore it, and reconnect. Check that the room and mute state return without replaying stale SDP/ICE. Check a full room, denied access, an expired invite, a second incoming call, revoked access, and another client taking over a call.
+- Hang up or sign out during permissions, relay loading, connection negotiation, and camera startup. Confirm the microphone/camera indicators turn off and no old call returns after another sign-in.
+- On iOS, background the app during a call. Confirm capture stops and the call ends; return and check native chat reconnects. Background calling is not included in 2.1.
+- On macOS/iOS 26 or newer, verify native Liquid Glass switches with keyboard, VoiceOver, increased contrast, and Reduce Motion. On macOS 15/iOS 18, verify ordinary native switches and fallback buttons.
+- Check Mac Settings via ⌘, and the app menu. Check the five iPhone tabs and iPad touch settings access. Open secondary tools from the More tools menu or You → More tools.

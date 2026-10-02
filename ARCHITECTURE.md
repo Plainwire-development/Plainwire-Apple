@@ -6,7 +6,7 @@ Plainwire uses one backend: `https://plainwi.re`. `AppModel` owns the state show
 
 Login sets a `pw_session` cookie. The app restores it with `GET /api/me` and sends the session's CSRF token on changes. Passwords are not stored by the app.
 
-The Workspace tab uses an ephemeral `WKWebView`. Before loading the web client, the app copies the active session cookie into WebKit's cookie store. Web sign-out removes the native session too. Returning to native tabs refreshes the account and server state. The web store does not persist between app sessions. A retained `WorkspaceController` owns the WebKit view, dialogs, and downloads so switching native sections preserves the web workspace. Sign-out cancels and clears it.
+Secondary tools use an ephemeral `WKWebView` presented as a sheet. Before loading the web client, the app copies the active session cookie into WebKit's cookie store. Web sign-out removes the native session too. Closing the sheet refreshes the account and server state. The web store does not persist between app sessions. A retained `WorkspaceController` owns the WebKit view, dialogs, and downloads so subsequent tool presentations preserve their state. Sign-out cancels and clears it.
 
 `GET /api/sync` refreshes conversations, servers, and friends. The server supplies the cursor for later syncs. Opening a room fetches its messages; the earlier-messages button loads older pages while preserving the first visible row. Reconnection refreshes the live tail and fills gaps with paginated requests. Context jumps use the bounded message-context endpoint and offer a return to the latest messages. The app keeps up to 12 recent rooms in memory.
 
@@ -22,8 +22,14 @@ Uploads stream from file URLs. Attachment Markdown is separated from visible mes
 
 AVKit platform views provide video controls directly. A shared playback owner cancels preparation, removes observers, and releases media when rows disappear. Voice-note progress updates run only during playback. Images use delegate-owned disk downloads with transfer and dimension limits before decoding. API responses are not cached to disk, and API redirects must remain on the configured origin.
 
+## Native calling
+
+`CallController` owns a single call or voice-channel room, permissions, participant state, native audio/video tracks, camera capture, relay refresh, and teardown. `NativeCallPeer` owns one native WebRTC transport per remote participant. The app pins the WebRTC XCFramework package to 154.0.0. The existing authenticated Swift API client reads `GET /api/rtc-config`; the existing realtime socket sends the server’s `call_*` and `voice_*` commands. No web assets, JavaScript, WebKit media engine, separate web session, or backend changes are used for calls.
+
+The higher user ID offers, matching the existing signaling protocol. Per-peer task queues serialize SDP and ICE; bounded candidate buffers hold ICE until its description is applied. Worker-thread delegates explicitly hop to MainActor. Room identity and lifecycle generations reject stale events and completions. Reconnection rebuilds transports and rejoins the current room; mute/deafen state is republished after joining. Sign-out, revoked access, superseded sessions, and hang-up stop capture and close transports. The native call dock lives above the root navigation and can be minimized without stopping media. The Mac sandbox allows incoming and outgoing UDP for native ICE/media, following [Apple’s network entitlement guidance](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.network.server). The app includes a local-network usage description for direct peer connections.
+
 ## Platforms and notifications
 
 iPhone uses tabs; iPad and Mac use split views. The app targets iOS 18 and macOS 15. Newer SwiftUI effects are guarded by OS availability checks.
 
-Local notifications are sent for incoming messages while the app is running. Permission is requested from Settings. iOS stops the WebSocket in the background and syncs on return. Background iPhone push needs an APNs registration and delivery service. Live calls are available through the embedded web client; native call controls need separate implementation.
+Local notifications are sent for incoming messages while the app is running. Permission is requested from Settings. iOS stops the WebSocket in the background and syncs on return. Background iPhone push needs an APNs registration and delivery service. Native calls end before iOS suspends the realtime connection. Continuing calls in the background and receiving calls while suspended require background audio, CallKit, and push integration.

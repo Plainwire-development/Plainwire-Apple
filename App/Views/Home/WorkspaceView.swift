@@ -2,7 +2,7 @@ import SwiftUI
 import Observation
 @preconcurrency import WebKit
 
-// Keep the web workspace alive while browsing native tabs, including active calls.
+// Retain secondary web tools between presentations. Calling uses native WebRTC.
 @MainActor @Observable
 final class WorkspaceController: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCookieStoreObserver, WKDownloadDelegate {
   @ObservationIgnored private(set) var webView: WKWebView?
@@ -284,13 +284,12 @@ struct WebWorkspaceView: View {
     VStack(spacing: 0) {
       HStack(spacing: 10) {
         Image(systemName: "square.grid.2x2.fill").foregroundStyle(.tint)
-        Text("Workspace").font(.headline)
+        Text("More tools").font(.headline)
         Spacer()
         Menu {
-          Button("Home") { model.openWorkspace(fragment: "home") }
           Button("Forums") { model.openWorkspace(fragment: "forums") }
           Button("Source Hub") { model.openWorkspace(fragment: "source") }
-          Button("Settings & Developer Apps") { model.openWorkspace(fragment: "settings") }
+          Button("Developer Apps") { model.openWorkspace(fragment: "settings") }
         } label: { Label("Browse", systemImage: "square.grid.2x2") }
         Button { workspace.reload() } label: { Image(systemName: "arrow.clockwise") }
           .help("Reload workspace").accessibilityLabel("Reload workspace")
@@ -318,7 +317,7 @@ struct WebWorkspaceView: View {
         }.font(.caption).padding(12).background(.bar)
       }
     }
-    .navigationTitle("Workspace")
+    .navigationTitle("More tools")
     .alert(workspace.dialogIsConfirmation ? "Confirm" : "Plainwire", isPresented: Binding(
       get: { workspace.dialogMessage != nil },
       set: { _ in }

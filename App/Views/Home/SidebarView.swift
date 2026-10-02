@@ -3,6 +3,14 @@ import SwiftUI
 struct SidebarView: View {
   @Environment(AppModel.self) private var model
 
+  private var navigationSections: [AppModel.Section] {
+    #if os(macOS)
+      [.messages, .servers, .friends, .activity]
+    #else
+      [.messages, .servers, .friends, .activity, .settings]
+    #endif
+  }
+
   var body: some View {
     List {
       Section {
@@ -10,7 +18,7 @@ struct SidebarView: View {
           PlainwireMark(size: 30)
           VStack(alignment: .leading, spacing: 1) {
             Text("Plainwire").font(.headline)
-            Text("Messages and servers").font(.caption2).foregroundStyle(.secondary)
+            Text("Your conversations, together").font(.caption2).foregroundStyle(.secondary)
           }
         }
         .padding(.vertical, 5)
@@ -18,7 +26,7 @@ struct SidebarView: View {
       }
 
       Section("Browse") {
-        ForEach(AppModel.Section.allCases) { section in
+        ForEach(navigationSections) { section in
           Button {
             model.selectedSection = section
           } label: {
@@ -40,10 +48,6 @@ struct SidebarView: View {
         }
       }
 
-      Section("Workspace") {
-        Button { model.openWorkspace(fragment: "forums") } label: { Label("Forums", systemImage: "text.bubble") }
-        Button { model.openWorkspace(fragment: "source") } label: { Label("Source Hub", systemImage: "chevron.left.forwardslash.chevron.right") }
-      }.buttonStyle(.plain)
 
       if !model.servers.isEmpty {
         Section("Servers") {
@@ -82,7 +86,17 @@ struct SidebarView: View {
           }
           .padding(.horizontal, 10)
         }
-        ConnectionStatusView().padding(.horizontal, 10)
+        HStack(spacing: 8) {
+          ConnectionStatusView()
+          Menu {
+            Button("Forums", systemImage: "text.bubble") { model.openWorkspace(fragment: "forums") }
+            Button("Source Hub", systemImage: "chevron.left.forwardslash.chevron.right") { model.openWorkspace(fragment: "source") }
+            Button("Developer Apps", systemImage: "hammer") { model.openWorkspace(fragment: "settings") }
+          } label: { Image(systemName: "ellipsis.circle") }
+          .menuStyle(.borderlessButton)
+          .help("More tools")
+          .accessibilityLabel("More tools")
+        }.padding(.horizontal, 10)
       }
       .padding(.vertical, 8)
       .background(.bar)

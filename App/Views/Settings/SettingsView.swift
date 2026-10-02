@@ -45,7 +45,7 @@ struct SettingsView: View {
       }
       .scrollIndicators(.automatic)
     }
-    .modifier(OptionalNavigationTitle(enabled: showNavigationTitle, title: "You"))
+    .modifier(OptionalNavigationTitle(enabled: showNavigationTitle, title: "Settings"))
     .task { await refreshNotificationStatus() }
     .onChange(of: scenePhase) { _, phase in
       if phase == .active { Task { await refreshNotificationStatus() } }
@@ -72,6 +72,7 @@ struct SettingsView: View {
 
         VStack(spacing: 18) {
           connectionCard
+          toolsCard
           aboutCard
           accountCard
         }
@@ -83,6 +84,7 @@ struct SettingsView: View {
         chatCard
         notificationsCard
         connectionCard
+        toolsCard
         aboutCard
         accountCard
       }
@@ -181,6 +183,22 @@ struct SettingsView: View {
         symbol: "arrow.clockwise", actionTitle: "Sync"
       ) {
         Task { await model.refresh() }
+      }
+    }
+  }
+
+  private var toolsCard: some View {
+    SettingsCard(title: "More tools", symbol: "ellipsis.circle", subtitle: "Additional Plainwire features.") {
+      SettingsActionRow(title: "Forums", detail: "Community discussions.", symbol: "text.bubble", actionTitle: "Open") {
+        model.openWorkspace(fragment: "forums")
+      }
+      SettingsDivider()
+      SettingsActionRow(title: "Source Hub", detail: "Projects and source code.", symbol: "chevron.left.forwardslash.chevron.right", actionTitle: "Open") {
+        model.openWorkspace(fragment: "source")
+      }
+      SettingsDivider()
+      SettingsActionRow(title: "Developer Apps", detail: "Manage integrations and bots.", symbol: "hammer", actionTitle: "Open") {
+        model.openWorkspace(fragment: "settings")
       }
     }
   }
@@ -353,6 +371,7 @@ private struct SettingsToggleRow: View {
       Toggle(title, isOn: $isOn)
         .labelsHidden()
         .adaptiveGlassToggle()
+        .accessibilityHint(detail)
         .fixedSize()
     }
     .padding(.vertical, 7)

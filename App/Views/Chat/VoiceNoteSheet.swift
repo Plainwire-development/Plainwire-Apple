@@ -120,6 +120,7 @@ struct VoiceNoteSheet: View {
         }.font(.system(.title, design: .monospaced).weight(.medium))
         Text(recorder.recording ? "Recording · up to 2 minutes" : "Voice note for \(room.title)")
           .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        if model.calls.hasCall { Text("End your call before recording a voice note.").font(.caption).foregroundStyle(.secondary) }
         if let error = recorder.error { Text(error).font(.callout).foregroundStyle(.red).multilineTextAlignment(.center) }
         HStack(spacing: 12) {
           if recorder.recording {
@@ -128,7 +129,7 @@ struct VoiceNoteSheet: View {
           } else {
             Button(recorder.fileURL == nil ? "Record" : "Record Again", systemImage: "mic.fill") {
               Task { await recorder.start() }
-            }.buttonStyle(.bordered).disabled(recorder.preparing || uploading)
+            }.buttonStyle(.bordered).disabled(recorder.preparing || uploading || model.calls.hasCall)
             if recorder.fileURL != nil && recorder.duration > 0 && recorder.error == nil {
               Button(uploading ? "Uploading…" : "Attach Voice Note", systemImage: "paperclip") {
                 Task { await attach() }
@@ -143,6 +144,8 @@ struct VoiceNoteSheet: View {
     }
     .adaptiveSheetSize(minWidth: 380, idealWidth: 460, minHeight: 360)
     .sheetErrorNotice()
+    .onChange(of: recorder.recording) { _, recording in model.recordingVoiceNote = recording }
+    .onDisappear { model.recordingVoiceNote = false }
     .interactiveDismissDisabled(recorder.recording || recorder.preparing || uploading)
     .onChange(of: scenePhase) { _, phase in if phase != .active { recorder.stop() } }
     .onDisappear { recorder.discard() }

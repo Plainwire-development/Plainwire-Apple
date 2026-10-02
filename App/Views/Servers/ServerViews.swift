@@ -107,18 +107,18 @@ struct ServerChannelBrowserView: View {
     ) { channel in
       if channel.kind == "voice" {
         Button {
-          model.openWorkspace(fragment: "voice/\(channel.id)")
+          model.joinVoice(channel)
         } label: {
           HStack(spacing: 9) {
             Image(systemName: "speaker.wave.2").foregroundStyle(.secondary).frame(width: 18)
             Text(channel.name)
             Spacer()
-            Image(systemName: "arrow.up.right.square")
+            Image(systemName: "phone.fill")
               .font(.caption2).foregroundStyle(.secondary)
           }
         }
         .buttonStyle(.plain)
-        .accessibilityHint("Opens this server in the full workspace for voice")
+        .accessibilityHint("Join this voice channel in Plainwire")
       } else {
         Button {
           Task {
@@ -225,11 +225,11 @@ private struct MobileServerChannelsView: View {
     ForEach(channels.sorted(by: { $0.position < $1.position })) { channel in
       if channel.kind == "voice" {
         Button {
-          model.openWorkspace(fragment: "voice/\(channel.id)")
+          model.joinVoice(channel)
         } label: {
           Label(channel.name, systemImage: "speaker.wave.2")
         }
-        .accessibilityHint("Opens this server in the full workspace for voice")
+        .accessibilityHint("Join this voice channel in Plainwire")
       } else {
         NavigationLink {
           ChatView(initialChannel: channel, initialServer: server)
@@ -615,7 +615,7 @@ private struct ServerManagementSheet: View {
         model.openWorkspace(fragment: "server/\(server.id)")
         dismiss()
       } label: {
-        Label("Open server in full workspace", systemImage: "square.grid.2x2")
+        Label("Advanced server tools", systemImage: "ellipsis.circle")
       }
     }
   }
