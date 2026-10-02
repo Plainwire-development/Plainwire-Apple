@@ -4,6 +4,8 @@
 	classes = {};
 	objectVersion = 56;
 	objects = {
+        C21400000000000000000001 /* CallPanelDragSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Calling/CallPanelDragSurface.swift"; sourceTree = SOURCE_ROOT; };
+        C21400000000000000000002 /* CallPanelDragSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21400000000000000000001; };
         C21300000000000000000001 /* WebRTC-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Resources/WebRTC-LICENSE.txt"; sourceTree = SOURCE_ROOT; };
         C21300000000000000000002 /* WebRTC-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = C21300000000000000000001; };
         C21100000000000000000003 /* CallDockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Calling/CallDockView.swift"; sourceTree = SOURCE_ROOT; };
@@ -85,6 +87,7 @@
 		AEF63687048485D45524643C /* Plainwire.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Plainwire.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7B8633C7EB6F5CB13673C25D /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (C21000000000000000000003 /* WebRTC in Frameworks */); runOnlyForDeploymentPostprocessing = 0; };
 		E4F78730D65EE9F55E2BAC2F /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
+            C21400000000000000000002 /* CallPanelDragSurface.swift in Sources */,
             C21200000000000000000003 /* CallDockView.swift in Sources */,
             C21200000000000000000002 /* CallController.swift in Sources */,
             C21200000000000000000001 /* NativeCallPeer.swift in Sources */,
@@ -126,6 +129,7 @@
 		); runOnlyForDeploymentPostprocessing = 0; };
 		6CFC827E67DCAE34C72B9CED = {isa = PBXGroup; children = (932704417AB46D25E8F18983 /* Sources */, D4ED70D4D27623DE041795FF /* Resources */, 021F2B7F3E0C61452C987484 /* Products */); sourceTree = "<group>"; };
 		932704417AB46D25E8F18983 /* Sources */ = {isa = PBXGroup; children = (
+            C21400000000000000000001 /* CallPanelDragSurface.swift */,
             C21100000000000000000003 /* CallDockView.swift */,
             C21100000000000000000002 /* CallController.swift */,
             C21100000000000000000001 /* NativeCallPeer.swift */,
@@ -230,13 +234,13 @@
 			ASSETCATALOG_COMPILER_ACCENT_COLOR_NAME = AccentColor;
 			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 			CODE_SIGN_STYLE = Automatic;
-			CURRENT_PROJECT_VERSION = 10;
+			CURRENT_PROJECT_VERSION = 11;
 			ENABLE_PREVIEWS = YES;
 			GENERATE_INFOPLIST_FILE = NO;
 			INFOPLIST_FILE = Resources/Info.plist;
 			IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 			MACOSX_DEPLOYMENT_TARGET = 15.0;
-			MARKETING_VERSION = 2.1.1;
+			MARKETING_VERSION = 2.1.2;
             LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../Frameworks";
 			PRODUCT_BUNDLE_IDENTIFIER = me.kokonico.plainwire;
 			PRODUCT_NAME = "$(TARGET_NAME)";
@@ -254,13 +258,13 @@
 			ASSETCATALOG_COMPILER_ACCENT_COLOR_NAME = AccentColor;
 			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 			CODE_SIGN_STYLE = Automatic;
-			CURRENT_PROJECT_VERSION = 10;
+			CURRENT_PROJECT_VERSION = 11;
 			ENABLE_PREVIEWS = YES;
 			GENERATE_INFOPLIST_FILE = NO;
 			INFOPLIST_FILE = Resources/Info.plist;
 			IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 			MACOSX_DEPLOYMENT_TARGET = 15.0;
-			MARKETING_VERSION = 2.1.1;
+			MARKETING_VERSION = 2.1.2;
             LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../Frameworks";
 			PRODUCT_BUNDLE_IDENTIFIER = me.kokonico.plainwire;
 			PRODUCT_NAME = "$(TARGET_NAME)";

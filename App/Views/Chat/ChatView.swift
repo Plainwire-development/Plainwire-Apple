@@ -89,7 +89,7 @@ struct ChatView: View {
             Button("Conversation Settings", systemImage: "gearshape") { showingConversationSettings = true }
           }
           if let room = model.selectedRoom, room.scope == "direct" {
-            Button("Start Call", systemImage: "phone") {
+            Button(model.calls.activeCalls[room.roomID] == nil ? "Start Call" : "Join Call", systemImage: "phone") {
               model.startCall(in: room)
             }
           }
@@ -573,7 +573,9 @@ private struct ChatRoomHeader: View {
       if let room = model.selectedRoom, room.scope == "direct" {
         Button { model.startCall(in: room) }
           label: { Image(systemName: "phone") }
-          .adaptiveGlassButton().help("Start call").accessibilityLabel("Start call")
+          .adaptiveGlassButton()
+          .help(model.calls.activeCalls[room.roomID] == nil ? "Start call" : "Join existing call")
+          .accessibilityLabel(model.calls.activeCalls[room.roomID] == nil ? "Start call" : "Join existing call")
       }
       if showsMemberButton {
         Button(action: onToggleMembers) {

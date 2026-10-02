@@ -53,6 +53,41 @@ import AVFoundation
     try check(call.incoming == nil, "Cancelled invitation remained visible")
     call.reset()
 
+    // Account-wide call presence is display state, never permission to open
+    // capture or silently supersede a website session.
+    call.connectionChanged(.connected)
+    call.receive(.init(type: "call_presence", payload: ["conversation_id": .int(42), "active": .bool(true),
+      "users": .array([.object(["user_id": .int(8), "muted": .bool(true), "deafened": .bool(true)]), .object(["user_id": .int(7)])])]), title: "Website call")
+    try check(call.callOnAnotherClient?.id == 42 && !call.hasCall && call.localVideo == nil, "Website call was not recognized without capture")
+    let beforeTransfer = commands.count
+    call.requestMicrophone = { false }
+    call.moveCallHere()
+    try await waitUntil { call.room == nil }
+    try check(commands.count == beforeTransfer && call.callOnAnotherClient?.id == 42,
+      "Denied transfer disturbed the website call")
+    call.requestMicrophone = { true }
+    call.loadConfiguration = { .object(["iceServers": .array([])]) }
+    call.moveCallHere()
+    try await waitUntil { commands.last?["type"] == .string("call_join") }
+    try check(call.muted && call.deafened, "Moving a call lost the website mute/deafen state")
+    try check(!commands.suffix(from: beforeTransfer).contains { $0["type"] == .string("call_ring") }, "Transfer rang an existing call")
+    call.receive(.init(type: "call_state", payload: ["conversation_id": .int(42),
+      "users": .array([.object(["user_id": .int(8)]), .object(["user_id": .int(8)])])]))
+    try check(call.joined && call.participants.count == 1, "Duplicate roster entries reached the call UI")
+    let beforeRepeatedStart = commands.count
+    call.start(kind: .direct, id: 42, title: "Website call", userID: 8)
+    try check(call.error == nil && commands.count == beforeRepeatedStart, "Opening the current call restarted it")
+    call.receive(.init(type: "call_superseded", payload: ["conversation_id": .int(42)]))
+    try check(call.room == nil && call.localVideo == nil && call.callOnAnotherClient?.id == 42,
+      "Moving the call away lost account-wide call state or capture cleanup")
+    call.receive(.init(type: "call_presence", payload: ["conversation_id": .int(42), "active": .bool(false), "users": .array([])]))
+    try check(call.callOnAnotherClient == nil && call.activeCalls.isEmpty, "Ended website call remained visible")
+    call.receive(.init(type: "call_presence", payload: ["conversation_id": .int(42), "active": .bool(true),
+      "users": .array([.object(["user_id": .int(8)])])]))
+    call.connectionChanged(.reconnecting(1))
+    try check(call.callOnAnotherClient == nil && call.activeCalls.isEmpty, "Disconnected socket preserved stale website call state")
+    call.reset()
+
     call.requestMicrophone = { true }
     call.loadConfiguration = { .object(["iceServers": .array([])]) }
     call.start(kind: .direct, id: 42, title: "Alice", userID: 8)

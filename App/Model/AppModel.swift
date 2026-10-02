@@ -1411,6 +1411,7 @@ final class AppModel {
     if !snapshot.syncDegraded || !warnings.contains("conversations") { conversations = snapshot.conversations }
     if !snapshot.syncDegraded || !warnings.contains("servers") { servers = snapshot.servers }
     if !snapshot.syncDegraded || !warnings.contains("friends") { friends = snapshot.friends }
+    calls.updateCallTitles(Dictionary(conversations.map { ($0.id, conversationDisplayName($0)) }, uniquingKeysWith: { _, latest in latest }))
     if !snapshot.syncDegraded || !warnings.contains("notifications") {
       if !incremental {
         notifications = snapshot.notifications

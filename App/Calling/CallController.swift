@@ -11,6 +11,11 @@ final class CallController {
     let title: String
     let token: String?
   }
+  struct ActiveCall {
+    let id: PlainwireID
+    let title: String
+    let participants: [PWCallParticipant]
+  }
   @ObservationIgnored var send: (([String: JSONValue]) async throws -> Void)?
   @ObservationIgnored var loadConfiguration: (() async throws -> JSONValue)?
   @ObservationIgnored var requestMicrophone: () async -> Bool = { await AVCaptureDevice.requestAccess(for: .audio) }
@@ -29,6 +34,7 @@ final class CallController {
   @ObservationIgnored private var awaitingReconnect = false
   @ObservationIgnored private var mutedBeforeDeafen = false
   @ObservationIgnored private var cameraChanging = false
+  @ObservationIgnored private var joinRequested = false
   @ObservationIgnored private static let factory: RTCPeerConnectionFactory = {
     RTCInitializeSSL()
     return RTCPeerConnectionFactory(encoderFactory: RTCDefaultVideoEncoderFactory(), decoderFactory: RTCDefaultVideoDecoderFactory())
@@ -46,23 +52,52 @@ final class CallController {
   private(set) var peers: [PlainwireID: NativeCallPeer] = [:]
   private(set) var localVideo: RTCVideoTrack?
   private(set) var startedAt: Date?
+  private(set) var activeCalls: [PlainwireID: ActiveCall] = [:]
+  private(set) var realtimeAvailable = false
   var userID: PlainwireID = 0
   var error: String?
   var expanded = false
   var hasCall: Bool { room != nil || incoming != nil }
   var mediaConnected: Bool { peers.values.contains { $0.connected } }
+  var callOnAnotherClient: ActiveCall? {
+    guard room == nil, incoming == nil, realtimeAvailable else { return nil }
+    return activeCalls.values.filter { $0.participants.contains { $0.id == userID } }.sorted { $0.id < $1.id }.first
+  }
+
+  func moveCallHere() {
+    guard let call = callOnAnotherClient else { return }
+    start(kind: .direct, id: call.id, title: call.title, userID: userID)
+  }
+
+  func updateCallTitles(_ titles: [PlainwireID: String]) {
+    for (id, call) in activeCalls {
+      if let title = titles[id], title != call.title {
+        activeCalls[id] = ActiveCall(id: id, title: title, participants: call.participants)
+      }
+    }
+  }
 
   func start(kind: Kind, id: PlainwireID, title: String, userID: PlainwireID,
              accepting token: String? = nil, answer: Bool = false) {
     guard id > 0, userID > 0 else { return }
-    guard room == nil else { expanded = true; error = "End your current call before starting another."; return }
+    if let room {
+      expanded = true
+      if room.kind != kind || room.id != id { error = "End your current call before starting another." }
+      return
+    }
     guard incoming == nil || answer else { error = "Answer or decline the incoming call first."; return }
     incoming = nil
     deadline?.cancel()
     self.userID = userID
     self.title = title
+    if kind == .direct, let seat = activeCalls[id]?.participants.first(where: { $0.id == userID }) {
+      muted = seat.muted || seat.deafened
+      deafened = seat.deafened
+      mutedBeforeDeafen = seat.muted
+    }
     room = PWCallRoom(kind: kind, id: id)
-    action = kind == .voice ? "join" : answer ? "accept" : "ring"
+    action = kind == .voice ? "join" : answer ? "accept" : activeCalls[id] != nil ? "join" : "ring"
+    joinRequested = false
     inviteToken = token
     error = nil
     status = "Preparing microphone…"
@@ -100,6 +135,7 @@ final class CallController {
         var command = room.command(self.joined ? "join" : self.action)
         if self.action == "accept", let token = self.inviteToken { command["invite_id"] = .string(token) }
         self.status = self.joined ? "Reconnecting…" : self.action == "ring" ? "Calling…" : "Joining…"
+        self.joinRequested = true
         try await self.send?(command)
         guard self.generation == epoch, !Task.isCancelled else { return }
         if !self.joined || (room.kind == .direct && self.participants.count < 2) {
@@ -170,6 +206,15 @@ final class CallController {
   }
 
   func receive(_ event: PlainwireRealtimeEvent, title: String? = nil) {
+    if let snapshot = PWCallPresenceSnapshot(event) {
+      if snapshot.active {
+        activeCalls[snapshot.conversationID] = ActiveCall(id: snapshot.conversationID,
+          title: title ?? activeCalls[snapshot.conversationID]?.title ?? "Conversation call", participants: snapshot.participants)
+      } else { activeCalls[snapshot.conversationID] = nil }
+      return
+    }
+    if event.type == "call_ended", let id = event.conversationID { activeCalls[id] = nil }
+    if event.type == "access_revoked", event.scope == "direct", let id = event.conversationID { activeCalls[id] = nil }
     if event.type == "call_incoming", let id = event.conversationID, id > 0 {
       if let room {
         if room.kind == .direct, room.id == id { return }
@@ -206,12 +251,16 @@ final class CallController {
     }
     guard let room else { return }
     if room.accessRevoked(by: event) {
-      reset()
+      reset(keepingCallPresence: true)
       error = "Your access to this call changed."
       return
     }
     guard room.matches(event) else { return }
-    if ended.contains(event.type) { reset(); return }
+    if ended.contains(event.type) {
+      if room.kind == .direct, event.type != "call_superseded" { activeCalls[room.id] = nil }
+      reset(keepingCallPresence: true)
+      return
+    }
     if event.type == "error" {
       let messages = ["forbidden": "You cannot join this call.", "room_full": "This call is full.",
         "no_active_call": "This call has ended.", "no_peers": "There is nobody else to call.",
@@ -227,7 +276,7 @@ final class CallController {
     if event.type == "call_ringing" { status = "Ringing…" }
     if event.type == "call_accepted" { status = "Connecting…"; action = "join"; inviteToken = nil }
     if event.type == "call_state" || event.type == "voice_state" {
-      participants = (event.payload["users"]?.arrayValue ?? []).compactMap(PWCallParticipant.init)
+      participants = PWCallParticipant.roster(event.payload["users"]?.arrayValue ?? [])
       guard participants.contains(where: { $0.id == userID }) else { return }
       let firstJoin = !joined || awaitingReconnect
       joined = true
@@ -250,7 +299,11 @@ final class CallController {
       if let peer = ensurePeer(id), peer.offerer { peer.negotiate() }
     }
     if event.type.hasSuffix("_peer_left"), let id = event.userID {
-      if id == userID { reset(); return }
+      if id == userID {
+        if room.kind == .direct { activeCalls[room.id] = nil }
+        reset(keepingCallPresence: true)
+        return
+      }
       removePeer(id)
       participants.removeAll { $0.id == id }
     }
@@ -374,12 +427,15 @@ final class CallController {
   }
 
   func connectionChanged(_ state: PlainwireRealtimeState) {
+    realtimeAvailable = state == .connected
+    if !realtimeAvailable { activeCalls.removeAll() }
     guard room != nil else { return }
     if state != .connected {
       generation += 1
       startup?.cancel(); startup = nil
       deadline?.cancel(); deadline = nil
       relayRefresh?.cancel(); relayRefresh = nil
+      cameraChanging = false
       awaitingReconnect = true
       status = "Reconnecting…"
       peers.values.forEach { $0.close() }
@@ -406,17 +462,24 @@ final class CallController {
   }
 
   func end() async {
-    var command = room?.command(room?.kind == .voice ? "leave" : joined ? "leave" : "cancel")
+    var command: [String: JSONValue]?
+    if let room, joinRequested || joined {
+      command = room.command(room.kind == .voice || joined || action == "join" ? "leave" : "cancel")
+    } else if let room, action == "accept" {
+      command = room.command("decline")
+      if let token = inviteToken { command?["invite_id"] = .string(token) }
+    }
     if let invitation = incoming {
       command = PWCallRoom(kind: .direct, id: invitation.id).command("decline")
       if let token = invitation.token { command?["invite_id"] = .string(token) }
     }
     // Release capture synchronously before any socket await, so a new call
     // cannot be mistaken for the call that this hang-up is ending.
-    reset()
+    if let room, room.kind == .direct, joinRequested || joined { activeCalls[room.id] = nil }
+    reset(keepingCallPresence: true)
     if let command { try? await send?(command) }
   }
-  func reset() {
+  func reset(keepingCallPresence: Bool = false) {
     generation += 1
     startup?.cancel(); startup = nil
     deadline?.cancel(); deadline = nil
@@ -435,6 +498,8 @@ final class CallController {
     joined = false; awaitingReconnect = false
     muted = false; deafened = false; mutedBeforeDeafen = false
     videoEnabled = false; cameraChanging = false
+    joinRequested = false
+    if !keepingCallPresence { activeCalls.removeAll(); realtimeAvailable = false }
     startedAt = nil; inviteToken = nil; expanded = false
     #if os(iOS)
       try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)

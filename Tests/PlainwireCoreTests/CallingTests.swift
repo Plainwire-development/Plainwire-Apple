@@ -5,6 +5,41 @@ import CoreGraphics
 import Testing
 @testable import PlainwireCore
 
+@Test func panelInteractionsUseOneAnchorAcrossEveryPointerEvent() {
+  let container = CGSize(width: 1000, height: 800)
+  let anchor = PWCallPanelLayout(container: container, preferredSize: CGSize(width: 480, height: 380), origin: CGPoint(x: 100, y: 100))
+  let move = PWCallPanelInteraction(anchor: anchor, kind: .move)
+  #expect(move.layout(translation: CGSize(width: 50, height: 30), container: container).origin.x == 150)
+  #expect(move.layout(translation: CGSize(width: 51, height: 31), container: container).origin.x == 151)
+  #expect(move.layout(translation: CGSize(width: -1000, height: -1000), container: container).origin.x == 12)
+  #expect(move.layout(translation: .zero, container: container) == anchor)
+  let resize = PWCallPanelInteraction(anchor: anchor, kind: .resize)
+  #expect(resize.layout(translation: CGSize(width: 80, height: 40), container: container).size.width == 560)
+  #expect(resize.layout(translation: CGSize(width: 81, height: 41), container: container).size.width == 561)
+  #expect(resize.layout(translation: CGSize(width: -900, height: -900), container: container).size.height == 280)
+}
+
+@Test func panelLayoutRejectsNonFiniteOrTransientGeometry() {
+  for container in [CGSize.zero, CGSize(width: 8, height: 6), CGSize(width: CGFloat.nan, height: CGFloat.infinity)] {
+    let fitted = PWCallPanelLayout(container: container, preferredSize: CGSize(width: CGFloat.infinity, height: CGFloat.nan), origin: CGPoint(x: CGFloat.nan, y: CGFloat.infinity))
+    #expect(fitted.size.width.isFinite && fitted.size.width > 0)
+    #expect(fitted.size.height.isFinite && fitted.size.height > 0)
+    #expect(fitted.origin.x.isFinite && fitted.origin.y.isFinite)
+  }
+}
+
+@Test func callPresenceMatchesTheAccountWideServerSnapshot() {
+  let event = PlainwireRealtimeEvent(type: "call_presence", payload: [
+    "conversation_id": .int(42), "active": .bool(true),
+    "users": .array([.object(["user_id": .int(8)]), .object(["user_id": .int(8)]), .object(["user_id": .int(7)])]),
+  ])
+  let snapshot = PWCallPresenceSnapshot(event)
+  #expect(snapshot?.conversationID == 42 && snapshot?.active == true)
+  #expect(snapshot?.participants.map(\.id) == [8, 7])
+  #expect(PWCallPresenceSnapshot(.init(type: "call_presence", payload: ["conversation_id": .int(42), "active": .bool(true)])) == nil)
+  #expect(PWCallPresenceSnapshot(.init(type: "call_presence", payload: ["conversation_id": .int(42), "active": .bool(false)]))?.active == false)
+}
+
 @Test func floatingPanelStaysReachableAfterDraggingAndWindowResizing() {
   let container = CGSize(width: 920, height: 620)
   let preferred = CGSize(width: 480, height: 380)

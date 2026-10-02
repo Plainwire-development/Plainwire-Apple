@@ -5,21 +5,15 @@ struct CallDockView: View {
   @Environment(AppModel.self) private var model
   @State private var preferredSize = CGSize(width: 480, height: 380)
   @State private var panelOrigin: CGPoint?
-  @GestureState private var dragTranslation = CGSize.zero
-  @GestureState private var resizeTranslation = CGSize.zero
+  @State private var interaction: PWCallPanelInteraction?
   private var call: CallController { model.calls }
   private var expanded: Bool { call.room != nil && call.expanded }
 
   var body: some View {
-    if call.hasCall || call.error != nil {
+    if call.hasCall || call.callOnAnotherClient != nil || call.error != nil {
       GeometryReader { geometry in
-        let restingSize = CGSize(width: preferredSize.width, height: expanded ? preferredSize.height : compactHeight)
-        let anchor = PWCallPanelLayout(container: geometry.size, preferredSize: restingSize, origin: panelOrigin)
-        let requestedSize = CGSize(
-          width: preferredSize.width + resizeTranslation.width,
-          height: expanded ? max(280, preferredSize.height + resizeTranslation.height) : compactHeight)
-        let moved = CGPoint(x: anchor.origin.x + dragTranslation.width, y: anchor.origin.y + dragTranslation.height)
-        let layout = PWCallPanelLayout(container: geometry.size, preferredSize: requestedSize, origin: moved)
+        let requestedSize = CGSize(width: preferredSize.width, height: expanded ? preferredSize.height : compactHeight)
+        let layout = PWCallPanelLayout(container: geometry.size, preferredSize: requestedSize, origin: panelOrigin)
         panel(layout: layout, container: geometry.size)
           .position(x: layout.origin.x + layout.size.width / 2, y: layout.origin.y + layout.size.height / 2)
       }
@@ -27,34 +21,56 @@ struct CallDockView: View {
   }
 
   private var compactHeight: CGFloat {
+    if call.callOnAnotherClient != nil { return call.error == nil ? 216 : 300 }
     if call.incoming != nil { return call.error == nil ? 188 : 252 }
     if call.room == nil { return 160 }
-    return call.error == nil ? 124 : 212
+    return call.error == nil ? 138 : 226
   }
 
   private func panel(layout: PWCallPanelLayout, container: CGSize) -> some View {
     VStack(spacing: 12) {
       HStack(spacing: 8) {
         HStack(spacing: 8) {
-          Image(systemName: "hand.draw").font(.caption)
-          Text(call.incoming != nil ? "INCOMING CALL" : "PLAINWIRE CALL")
+          Image(systemName: "line.3.horizontal").font(.caption)
+          Text(call.incoming != nil ? "INCOMING CALL" : call.callOnAnotherClient != nil ? "CALL ON ANOTHER CLIENT" : "PLAINWIRE CALL")
             .font(.caption2.weight(.semibold)).tracking(1)
         }
         .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .gesture(dragGesture(layout: layout, container: container))
+        .frame(height: 30)
+        .overlay {
+          CallPanelDragSurface { delta, phase in
+            updateInteraction(kind: .move, delta: delta, phase: phase, layout: layout, container: container)
+          }
+        }
         .help("Drag to move the call panel")
         .accessibilityLabel("Move call panel")
         Menu {
-          Button("Reset position and size") { panelOrigin = nil; preferredSize = CGSize(width: 480, height: 380) }
+          Button("Reset position and size") { interaction = nil; panelOrigin = nil; preferredSize = CGSize(width: 480, height: 380) }
+          Button("Center panel") { panelOrigin = CGPoint(x: (container.width - layout.size.width) / 2, y: (container.height - layout.size.height) / 2) }
           Button("Small panel") { preferredSize = CGSize(width: 380, height: 320) }
           Button("Large panel") { preferredSize = CGSize(width: 720, height: 520) }
         } label: { Image(systemName: "ellipsis").frame(width: 24, height: 20) }
         .menuStyle(.borderlessButton).fixedSize()
         .accessibilityLabel("Call panel options")
       }
-      if let invitation = call.incoming {
+      if let remoteCall = call.callOnAnotherClient {
+        ScrollView {
+          HStack(spacing: 12) {
+            callIcon("desktopcomputer", color: .accentColor)
+            VStack(alignment: .leading, spacing: 4) {
+              Text(remoteCall.title).font(.headline).lineLimit(2)
+              Text("You’re in this call on another client.").font(.caption).foregroundStyle(.secondary)
+              Text("Move it here to use this app’s microphone and controls.").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+          }
+          errorNotice
+        }
+        Button("Move call here") { call.moveCallHere() }
+          .adaptiveGlassButton(prominent: true)
+      } else if let invitation = call.incoming {
         ScrollView {
           HStack(spacing: 12) {
             callIcon("phone.arrow.down.left.fill", color: .green)
@@ -75,7 +91,7 @@ struct CallDockView: View {
         if expanded {
           ScrollView {
             VStack(spacing: 14) {
-              if call.videoEnabled || !remoteVideos.isEmpty { videoStage(width: layout.size.width - 32) }
+              if call.videoEnabled || !remoteVideos.isEmpty { videoStage(width: max(1, layout.size.width - 32)) }
               else { audioStage }
               if !call.participants.isEmpty { participantStrip }
               errorNotice
@@ -100,7 +116,11 @@ struct CallDockView: View {
         Image(systemName: "arrow.up.left.and.arrow.down.right")
           .font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
           .frame(width: 30, height: 30).contentShape(Rectangle())
-          .gesture(resizeGesture(container: container))
+          .overlay {
+            CallPanelDragSurface(resizing: true) { delta, phase in
+              updateInteraction(kind: .resize, delta: delta, phase: phase, layout: layout, container: container)
+            }
+          }
           .help("Drag to resize the call panel")
           .accessibilityLabel("Call panel size")
           .accessibilityAdjustableAction { direction in
@@ -111,33 +131,24 @@ struct CallDockView: View {
     }
     .shadow(color: .black.opacity(0.18), radius: 24, y: 10)
     .onChange(of: container) { _, size in
+      interaction = nil
       let fitted = PWCallPanelLayout(container: size, preferredSize: layout.size, origin: panelOrigin)
       if panelOrigin != nil { panelOrigin = fitted.origin }
     }
   }
 
-  private func dragGesture(layout: PWCallPanelLayout, container: CGSize) -> some Gesture {
-    // Remove the live translation to keep the anchor stable throughout the drag.
-    let anchor = PWCallPanelLayout(container: container, preferredSize: layout.size, origin: panelOrigin).origin
-    return DragGesture(minimumDistance: 3)
-      .updating($dragTranslation) { value, state, _ in state = value.translation }
-      .onEnded { value in
-        panelOrigin = PWCallPanelLayout(container: container, preferredSize: layout.size,
-          origin: CGPoint(x: anchor.x + value.translation.width, y: anchor.y + value.translation.height)).origin
-      }
-  }
-
-  private func resizeGesture(container: CGSize) -> some Gesture {
-    let anchor = PWCallPanelLayout(container: container, preferredSize: preferredSize, origin: panelOrigin)
-    return DragGesture(minimumDistance: 2)
-      .updating($resizeTranslation) { value, state, _ in state = value.translation }
-      .onEnded { value in
-        let requested = CGSize(width: preferredSize.width + value.translation.width,
-          height: max(280, preferredSize.height + value.translation.height))
-        let resized = PWCallPanelLayout(container: container, preferredSize: requested, origin: anchor.origin)
-        preferredSize = resized.size
-        panelOrigin = resized.origin
-      }
+  private func updateInteraction(kind: PWCallPanelInteraction.Kind, delta: CGSize,
+    phase: CallPanelDragPhase, layout: PWCallPanelLayout, container: CGSize) {
+    if phase == .began { interaction = PWCallPanelInteraction(anchor: layout, kind: kind); return }
+    guard let interaction else { return }
+    let fitted = phase == .cancelled ? interaction.anchor : interaction.layout(translation: delta, container: container)
+    var transaction = Transaction()
+    transaction.disablesAnimations = true
+    withTransaction(transaction) {
+      panelOrigin = fitted.origin
+      if interaction.kind == .resize { preferredSize = fitted.size }
+      if phase == .ended || phase == .cancelled { self.interaction = nil }
+    }
   }
 
   private var callHeader: some View {

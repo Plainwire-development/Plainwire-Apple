@@ -144,6 +144,10 @@ private struct ConversationRow: View {
         }
 
         HStack(spacing: 7) {
+          if model.calls.activeCalls[conversation.id] != nil {
+            Image(systemName: "phone.fill").foregroundStyle(.green)
+              .accessibilityLabel("Call in progress")
+          }
           Text(conversation.lastBody.isEmpty ? "No messages yet" : conversation.lastBody)
             .font(.subheadline)
             .foregroundStyle(conversation.unread > 0 ? .primary : .secondary)

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.1.2
+
+- Replaced the call panel’s crashing SwiftUI GestureState callbacks with native AppKit mouse and UIKit pan handlers. Pointer movement uses window coordinates and a fixed anchor to prevent drift; direct manipulation disables layout animation.
+- Enlarged the drag handle, added Center panel, and guarded transient/non-finite panel geometry and video dimensions.
+- Recognized account-wide direct/group call presence from the website and other clients. Show an active-call panel and conversation indicator; offer Move call here, join existing calls without ringing again, preserve mute/deafen, and release media when another client takes over.
+- Failed or cancelled startup before a join no longer sends unrelated leave/cancel commands. Added duplicate participant filtering and restored camera controls after disconnects.
+- Added an optimized smoke test that mounts the actual SwiftUI call UI and drives native drag/resize, plus regression coverage for cross-client discovery, transfer, startup failures, stale call state, and panel anchors.
+
 ## 2.1.1
 
 - Fixed friends incorrectly showing “Presence unavailable” when omitted from the server’s sparse snapshot. Offline status now requires a completed live watch snapshot; disconnected and newly watched users remain unknown until refreshed.

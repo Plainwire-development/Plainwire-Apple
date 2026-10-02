@@ -106,3 +106,12 @@ For the presence fix, disconnect the second account and verify that Friends, pro
 - Drag the call panel to every window edge, grow/shrink it from its lower-right corner, minimize/expand, resize the main window, and rotate an iPad/iPhone. Confirm controls remain reachable, video follows the panel width, and chat outside the panel remains interactive.
 - Use Small panel, Large panel, and Reset position and size. Verify keyboard/VoiceOver menu access and the resize handle's adjustable action.
 - Receive a second invitation while the first is unanswered; verify the original remains and the second is declined. Disconnect during microphone permission/startup, then reconnect or hang up; capture must not return from stale work.
+
+## 2.1.2 pointer crash and cross-client conversation calls
+
+- Run `./scripts/verify-calling.sh`. It now compiles an optimized full-app smoke executable, mounts the actual call panel in an invisible window, exercises AppKit hit testing, and drives repeated move/resize events plus cancellation. It also verifies website-call presence and transfer commands without server accounts.
+- In the packaged Release app, drag the top grip slowly, quickly, and past every window edge. Resize repeatedly, press Escape during a drag, resize the app window, and minimize/expand the call. Confirm the grip follows the pointer smoothly and audio continues.
+- Join a direct/group conversation call in the website, then open the native app. Verify the other-client panel and conversation indicator appear without activating the native microphone or camera.
+- Choose Move call here; verify the website relinquishes audio, no participant is rung again, mute/deafen survive, and native media connects. Move it back to the website and verify native capture stops and the other-client panel returns.
+- Deny microphone permission during transfer or fail relay loading before joining. Confirm the website call survives and the native app presents the error. End the website call and confirm the panel disappears.
+- On iPhone/iPad, move and resize using the native pan handles; rotate during an interaction and verify controls remain reachable.

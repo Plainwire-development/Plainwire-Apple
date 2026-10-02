@@ -24,3 +24,14 @@ xcrun swiftc -swift-version 6 -warnings-as-errors \
   App/Calling/NativeCallPeer.swift Tests/Manual/CallingSmoke.swift \
   -o "$build_dir/plainwire-calling-smoke"
 "$build_dir/plainwire-calling-smoke"
+
+app_sources=()
+while IFS= read -r source; do app_sources+=("$source"); done < <(
+  find App Sources -type f -name '*.swift' ! -name 'PlainwireApp.swift' | sort
+)
+xcrun swiftc -swift-version 6 -O -warnings-as-errors \
+  -F "$frameworks_dir" -framework WebRTC \
+  -Xlinker -rpath -Xlinker "$frameworks_dir" \
+  "${app_sources[@]}" \
+  Tests/Manual/CallPanelSmoke.swift -o "$build_dir/plainwire-call-panel-smoke"
+"$build_dir/plainwire-call-panel-smoke"
