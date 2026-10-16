@@ -99,6 +99,10 @@ struct RemoteImage: View {
   @AppStorage(AppPreferenceKeys.autoplayAnimatedMedia) private var autoplay = true
   @State private var visible = true
 
+  init(asset: RemoteImageAsset) {
+    self.asset = asset
+  }
+
   func resizable() -> Self {
     var copy = self
     copy.resizes = true
