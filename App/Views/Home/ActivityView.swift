@@ -5,19 +5,54 @@ struct ActivityView: View {
   @State private var loading = false
   @State private var error: String?
   @State private var confirmClear = false
+  @State private var unreadOnly = false
+  private var visible: [PWNotification] { model.notifications.filter { !unreadOnly || !$0.seen } }
   var body: some View {
-    List(model.notifications) { notification in
+    List {
+      Section {
+        PageHeader(title: "Your activity", subtitle: "Mentions, replies, and the moments you might have missed.",
+          symbol: "bell.badge.fill", accent: .orange, eyebrow: "Stay in the loop")
+          .listRowSeparator(.hidden).listRowBackground(Color.clear)
+      }
+      Section {
+        HStack {
+          Picker("Activity", selection: $unreadOnly) {
+            Text("All activity").tag(false)
+            Text("Unread").tag(true)
+          }.pickerStyle(.segmented).frame(maxWidth: 280)
+          Spacer()
+          if model.unreadActivityCount > 0 {
+            Text("\(model.unreadActivityCount) new").font(.caption.weight(.medium)).foregroundStyle(.orange)
+          }
+        }.listRowSeparator(.hidden).listRowBackground(Color.clear)
+      }
+      if visible.isEmpty {
+        Section {
+          Group {
+            if loading { ProgressView("Loading activity…").frame(maxWidth: .infinity).padding(40) }
+            else if let error {
+              ContentUnavailableView { Label("Activity unavailable", systemImage: "wifi.exclamationmark") }
+              description: { Text(error) } actions: { Button("Try Again") { Task { await load() } } }
+            } else {
+              ContentUnavailableView("You’re all caught up", systemImage: "checkmark.circle",
+                description: Text(unreadOnly ? "You have no unread activity." : "New mentions, replies, and friend requests will appear here."))
+            }
+          }
+          .padding(.vertical, 24).listRowSeparator(.hidden).listRowBackground(Color.clear)
+        }
+      }
+      ForEach(visible) { notification in
       Button {
         guard let url = URL(string: notification.url, relativeTo: model.appURL()) else { return }
         Task { await model.handleDeepLink(url.absoluteURL) }
       } label: {
         HStack(alignment: .top, spacing: 12) {
           Image(systemName: symbol(notification.kind))
-            .foregroundStyle(Color.accentColor)
-            .frame(width: 34, height: 34)
-            .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+            .foregroundStyle(accent(notification.kind))
+            .frame(width: 40, height: 40)
+            .background(accent(notification.kind).opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
           VStack(alignment: .leading, spacing: 5) {
-            Text(notification.body).font(.body).foregroundStyle(.primary)
+            Text(notification.body).font(.body).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
             Text(Date(timeIntervalSince1970: Double(notification.createdAt) / 1000), style: .relative)
               .font(.caption).foregroundStyle(.secondary)
           }
@@ -26,22 +61,15 @@ struct ActivityView: View {
             Circle().fill(Color.accentColor).frame(width: 7, height: 7).padding(.top, 8)
               .accessibilityLabel("Unread")
           }
-        }.padding(.vertical, 8).contentShape(Rectangle())
-      }.buttonStyle(.plain)
-    }
-    .scrollContentBackground(.hidden)
-    .background(AppBackdrop())
-    .overlay {
-      if model.notifications.isEmpty {
-        if loading { ProgressView() }
-        else if let error {
-          ContentUnavailableView { Label("Activity unavailable", systemImage: "wifi.exclamationmark") }
-          description: { Text(error) } actions: { Button("Try Again") { Task { await load() } } }
-        } else {
-          ContentUnavailableView("You're all caught up", systemImage: "bell.badge", description: Text("Mentions, friend requests, and message activity appear here."))
-        }
+        }.padding(16).cardSurface(cornerRadius: 16)
+          .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+      }.buttonStyle(.plain).listRowBackground(Color.clear).listRowSeparator(.hidden)
       }
     }
+    .listStyle(.inset)
+    .scrollContentBackground(.hidden)
+    .background(AppBackdrop())
+    .frame(maxWidth: 1000).frame(maxWidth: .infinity).background(AppBackdrop())
     .navigationTitle("Activity")
     .toolbar {
       ToolbarItem(placement: .primaryAction) {
@@ -71,6 +99,16 @@ struct ActivityView: View {
     case "reaction": "face.smiling"
     case "missed_call": "phone.down"
     default: "bubble.left"
+    }
+  }
+
+  private func accent(_ kind: String) -> Color {
+    switch kind {
+    case "mention": .indigo
+    case "friend_request", "friend_accepted": .teal
+    case "reaction": .pink
+    case "missed_call": .red
+    default: .blue
     }
   }
 }

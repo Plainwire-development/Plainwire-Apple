@@ -157,8 +157,9 @@ private struct LaunchView: View {
 private struct CompactRootView: View {
   @Environment(AppModel.self) private var model
   var body: some View {
-    @Bindable var model = model
-    TabView(selection: $model.selectedSection) {
+    TabView(selection: Binding(get: {
+      model.selectedSection == .activity ? .friends : model.selectedSection
+    }, set: { model.selectedSection = $0 })) {
       NavigationStack {
         ConversationListView(compactNavigation: true)
           .navigationDestination(item: navigationRoom(scope: "direct")) { _ in ChatView() }
@@ -170,10 +171,26 @@ private struct CompactRootView: View {
       }
         .tabItem { Label("Servers", systemImage: "rectangle.3.group.fill") }.tag(
           AppModel.Section.servers)
-      NavigationStack { FriendsView() }
-        .tabItem { Label("Friends", systemImage: "person.2.fill") }.tag(AppModel.Section.friends)
-      NavigationStack { ActivityView() }
-        .tabItem { Label("Activity", systemImage: "bell.fill") }.tag(AppModel.Section.activity)
+      ForumsView()
+        .tabItem { Label("Forums", systemImage: "text.bubble.fill") }.tag(AppModel.Section.forums)
+      NavigationStack {
+        VStack(spacing: 0) {
+          Picker("People", selection: Binding(get: {
+            model.selectedSection == .activity ? AppModel.Section.activity : .friends
+          }, set: { model.selectedSection = $0 })) {
+            Text("Friends").tag(AppModel.Section.friends)
+            Text(model.unreadActivityCount > 0 ? "Activity (\(model.unreadActivityCount))" : "Activity")
+              .tag(AppModel.Section.activity)
+          }
+          .pickerStyle(.segmented).frame(maxWidth: 360).padding(.horizontal, 20).padding(.vertical, 10)
+          Group {
+            if model.selectedSection == .activity { ActivityView() }
+            else { FriendsView() }
+          }
+        }
+        .background(AppBackdrop())
+      }
+        .tabItem { Label("People", systemImage: "person.2.fill") }.tag(AppModel.Section.friends)
         .badge(model.unreadActivityCount)
       NavigationStack { SettingsView() }
         .tabItem { Label("You", systemImage: "person.crop.circle.fill") }.tag(
@@ -199,7 +216,7 @@ private struct SplitRootView: View {
     switch model.selectedSection {
     case .messages, .servers:
       threeColumnRoot
-    case .friends, .activity, .settings:
+    case .forums, .friends, .activity, .settings:
       twoColumnRoot
     }
   }
@@ -217,9 +234,9 @@ private struct SplitRootView: View {
         ChatView()
       } else {
         EmptyDetailView(
-          title: "Choose a conversation",
-          symbol: "bubble.left.and.bubble.right",
-          description: "Messages and channels stay synced with Plainwire.")
+          title: model.selectedSection == .servers ? "Find your place." : "Good conversations start here.",
+          symbol: model.selectedSection == .servers ? "rectangle.3.group.fill" : "bubble.left.and.bubble.right.fill",
+          description: model.selectedSection == .servers ? "Choose a channel to catch up with your community." : "Pick a conversation, say hello, or discover a community in Forums.")
       }
     }
     .navigationSplitViewStyle(.balanced)
@@ -231,6 +248,8 @@ private struct SplitRootView: View {
         .navigationSplitViewColumnWidth(min: 190, ideal: 228, max: 300)
     } detail: {
       switch model.selectedSection {
+      case .forums:
+        ForumsView()
       case .friends:
         FriendsView()
       case .activity:
@@ -248,12 +267,13 @@ private struct SplitRootView: View {
     switch model.selectedSection {
     case .messages: ConversationListView(compactNavigation: false)
     case .servers: ServerChannelBrowserView()
-    case .friends, .activity, .settings: EmptyView()
+    case .forums, .friends, .activity, .settings: EmptyView()
     }
   }
 }
 
 private struct EmptyDetailView: View {
+  @Environment(AppModel.self) private var model
   let title: String
   let symbol: String
   let description: String
@@ -261,8 +281,23 @@ private struct EmptyDetailView: View {
   var body: some View {
     ZStack {
       AppBackdrop()
-      ContentUnavailableView(title, systemImage: symbol, description: Text(description))
-        .padding(32)
+      VStack(spacing: 22) {
+        Image(systemName: symbol).font(.system(size: 48, weight: .medium)).symbolRenderingMode(.hierarchical)
+          .foregroundStyle(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
+          .frame(width: 120, height: 120)
+          .background(Color.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 36, style: .continuous))
+        VStack(spacing: 10) {
+          Text(title).font(.system(.title, design: .rounded, weight: .bold))
+          Text(description).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }.multilineTextAlignment(.center)
+        HStack(spacing: 12) {
+          if model.selectedSection == .messages {
+            Button("New Conversation", systemImage: "square.and.pencil") { model.showNewConversation = true }
+              .adaptiveGlassButton(prominent: true)
+          }
+          Button("Explore Forums", systemImage: "text.bubble") { model.openForums() }.adaptiveGlassButton()
+        }
+      }.padding(32).frame(maxWidth: 500)
     }
   }
 }

@@ -21,9 +21,10 @@ struct SignInView: View {
       ScrollView {
         VStack(spacing: 28) {
           VStack(spacing: 14) {
-            PlainwireMark(size: 76)
-            Text("Plainwire").font(.largeTitle.bold())
-            Text("Messages, friends, and servers in one place.").font(.subheadline)
+            PlainwireMark(size: 66).frame(width: 100, height: 100).cardSurface(cornerRadius: 28)
+            Text("Plainwire").font(.system(.largeTitle, design: .rounded, weight: .bold))
+            Text(mode == .signIn ? "Good to see you again." : "Make yourself at home.").font(.title3.weight(.medium))
+            Text("Messages, communities, and conversations worth keeping.").font(.subheadline)
               .foregroundStyle(.secondary).multilineTextAlignment(.center)
           }
           VStack(spacing: 16) {
@@ -60,7 +61,8 @@ struct SignInView: View {
               model.isBusy || model.isSwitchingHost || username.isEmpty || password.isEmpty)
           }
           .padding(24)
-          .adaptiveGlass(cornerRadius: 28)
+          .cardSurface(cornerRadius: 26)
+          .shadow(color: .black.opacity(0.045), radius: 24, y: 10)
           .frame(maxWidth: 440)
           Button { model.showServerPicker = true } label: {
             Label(model.serverDisplayName, systemImage: "network")

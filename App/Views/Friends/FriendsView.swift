@@ -17,10 +17,17 @@ struct FriendsView: View {
     ZStack {
       AppBackdrop()
       List {
+        Section {
+          PageHeader(title: "Friends", subtitle: "See who’s around and pick up a conversation.", symbol: "person.2.fill",
+            accent: .teal, eyebrow: "Your people")
+            .listRowBackground(Color.clear).listRowSeparator(.hidden)
+        }
         if !pending.isEmpty {
           Section {
             ForEach(pending, id: \.user.id) { friend in
               FriendRow(friend: friend, requestActions: true)
+                .padding(12).cardSurface(cornerRadius: 16)
+                .listRowBackground(Color.clear).listRowSeparator(.hidden)
             }
           } header: {
             Label("Requests", systemImage: "person.crop.circle.badge.plus")
@@ -30,9 +37,12 @@ struct FriendsView: View {
         Section {
           if accepted.isEmpty {
             FriendsEmptyRow()
+              .padding(12).cardSurface(cornerRadius: 16).listRowBackground(Color.clear).listRowSeparator(.hidden)
           } else {
             ForEach(accepted, id: \.user.id) { friend in
               FriendRow(friend: friend, requestActions: false)
+                .padding(12).cardSurface(cornerRadius: 16)
+                .listRowBackground(Color.clear).listRowSeparator(.hidden)
             }
           }
         } header: {
@@ -79,6 +89,7 @@ struct FriendsView: View {
       }
       .scrollContentBackground(.hidden)
       .modifier(FriendsListStyleModifier())
+      .frame(maxWidth: 1000).frame(maxWidth: .infinity)
     }
     .navigationTitle("Friends")
     .searchable(text: $search, prompt: "Find people")
@@ -135,7 +146,7 @@ private struct SearchUserRow: View {
         .adaptiveGlassButton(prominent: true)
         .controlSize(.small)
     }
-    .padding(.vertical, 4)
+    .padding(12).cardSurface(cornerRadius: 16).listRowBackground(Color.clear).listRowSeparator(.hidden)
     .sheet(isPresented: $showingProfile) { PersonProfileSheet(userID: user.id) }
   }
 }

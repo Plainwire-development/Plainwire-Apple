@@ -48,7 +48,7 @@ struct PlainwireApp: App {
           Button("End Call") { Task { await model.calls.end() } }
             .disabled(!model.calls.hasCall)
           Divider()
-          Button("Forums") { model.openWorkspace(fragment: "forums") }
+          Button("Forums") { model.openForums() }.keyboardShortcut("5", modifiers: .command)
           Button("Source Hub") { model.openWorkspace(fragment: "source") }
         }
       }

@@ -4,6 +4,8 @@ Run `./scripts/verify.sh` and build the Mac and iOS Simulator targets before a r
 
 ## Local audit smoke tests
 
+Forum checks use the reference API contract and two independent localhost hosts. A second API client stands in for the website and verifies shared discussion/reply edits and votes. The smoke test also checks membership denials, creation, moderation, deletion tombstones, slow-search ordering, native links, and old requests completing after a host switch. Forum captures are written to `/tmp/plainwire-forums-light.png`, `/tmp/plainwire-forums-dark.png`, `/tmp/plainwire-forum-board.png`, and `/tmp/plainwire-forum-discussion.png`, with additional narrow overview/board/discussion/composer captures. Main-page captures use `/tmp/plainwire-page-{messages,servers,friends,activity}.png`.
+
 `./scripts/verify-calling.sh` also runs the native media and layout checks against two local fixture hosts. It verifies that DM avatar sizes share a decoded asset, concurrent larger sizes download a URL once, small GIFs have a proportional cache cost, and old host transfers cannot repopulate cleared caches. It mounts actual conversation settings with 40 members at 360 × 420 and 560 × 520, plus a long profile at 360 × 400, and checks that the native scroll view reaches the final content. Sidebar light/dark, conversation settings, and profile captures are written to `/tmp/plainwire-sidebar-light.png`, `/tmp/plainwire-sidebar-dark.png`, `/tmp/plainwire-conversation-settings.png`, and `/tmp/plainwire-profile.png`.
 
 For a visual pass with a signed-in account, resize each profile/account/server/channel sheet, enter long names and bios, and scroll to its final action. Check the sidebar footer in light/dark appearance and with Reduce Transparency, verify rounded composer/call controls, and switch between DMs with a GIF avatar. The avatar should keep its clipping and appear immediately when cached. Confirm the separate Mac Settings window follows the account theme. First-time downloads still depend on the host and image size.
@@ -53,6 +55,17 @@ For the presence fix, disconnect the second account and verify that Friends, pro
 - Open server settings on Mac and iPhone. Visit each section, edit appearance and profile, and verify invite lists load when `channel_id` is a string.
 - Open Workspace after signing in. Confirm it opens without a second login. Change a setting there, return to a native tab, and confirm it refreshes. Sign out in Workspace and confirm the native app signs out.
 - Check native microphone/camera/local-network permission denial and recovery on real Mac and iOS devices.
+
+## Native forums
+
+- Open Forums from Mac navigation or ⌘5, iPhone navigation, and a notification or shared forum/discussion link. Confirm each uses the selected installation and remains native. On iPhone, verify five tabs and the Friends/Activity picker in People, including its unread badge.
+- Explore and filter joined forums. Search during slow networking, switch queries, sort discussions, and verify pinned discussions remain first. Test no forums, no search results, deleted forums, and unavailable discussions.
+- Join, create a discussion with Markdown and an attachment, reply, vote, and edit from both the website and native app. Confirm the other client sees the saved data. Native thread/reply events should refresh without forcing a reader away from their scroll position.
+- Try posting before joining, after leaving, and in a closed discussion. Compare author, forum owner, and ordinary member controls. Confirm server denials are readable and destructive actions require confirmation.
+- Pin, close, reopen, and delete a discussion. Delete a reply or forum from another client while requests are pending. Removed content must not return from an older response.
+- Draft a discussion and reply, navigate away, restart, and return. Switch between hosts with identical IDs, then sign out and sign in with another account; cached content and drafts must remain isolated.
+- Paste emoji-heavy titles and bodies near their byte limits. Verify the editor explains the limit and disables publishing over it rather than letting the server truncate text.
+- Resize the forum overview, board, discussion, and all editors. Check light/dark appearance, large text, increased contrast, keyboard navigation, VoiceOver labels, long code blocks, spoilers, and attachment playback.
 
 ## Attachments
 

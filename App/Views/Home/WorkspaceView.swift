@@ -292,7 +292,7 @@ struct WebWorkspaceView: View {
         Text("More tools").font(.headline)
         Spacer()
         Menu {
-          Button("Forums") { model.openWorkspace(fragment: "forums") }
+          Button("Forums") { model.showWorkspace = false; model.openForums() }
           Button("Source Hub") { model.openWorkspace(fragment: "source") }
           Button("Developer Apps") { model.openWorkspace(fragment: "settings") }
         } label: { Label("Browse", systemImage: "square.grid.2x2") }

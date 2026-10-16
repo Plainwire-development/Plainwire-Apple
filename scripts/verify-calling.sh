@@ -33,6 +33,6 @@ xcrun swiftc -swift-version 6 -O -warnings-as-errors \
   -F "$frameworks_dir" -framework WebRTC \
   -Xlinker -rpath -Xlinker "$frameworks_dir" \
   "${app_sources[@]}" \
-  Tests/Manual/CallPanelSmoke.swift Tests/Manual/MediaAndHostsSmoke.swift \
+  Tests/Manual/CallPanelSmoke.swift Tests/Manual/MediaAndHostsSmoke.swift Tests/Manual/ForumsSmoke.swift \
   -o "$build_dir/plainwire-call-panel-smoke"
 python3 Tests/Manual/HostFixture.py "$build_dir/plainwire-call-panel-smoke"

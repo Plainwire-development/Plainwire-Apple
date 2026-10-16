@@ -38,6 +38,7 @@ enum MediaAndHostsSmoke {
     try check(model.sessionState == .signedOut, "Fresh host should require sign in")
     let firstLogin = await model.login(username: "fixture", password: "fixture")
     try check(firstLogin && model.session?.user.displayName == "Host A", "Host A login failed")
+    try await ForumsSmoke.run(model: model)
     let gifPage = try await model.searchGIFs("hello & 🎉")
     guard let gif = gifPage.results.first else { throw Failure.check("GIF search did not use the host API") }
     let room = AppModel.Room(scope: "direct", roomID: 42, title: "GIF fixture")
@@ -70,6 +71,8 @@ enum MediaAndHostsSmoke {
     try check(profileImage != nil && counts["A/coalesced-image"] == 1,
       "Different avatar sizes downloaded the same file more than once")
     let staleImage = Task { await RemoteImageStore.shared.image(for: first.appURL().appendingPathComponent("slow-image"), pixelSize: 64) }
+    let oldForums = model.forums
+    let staleForum = Task { await oldForums.loadThread(1000) }
     try await Task.sleep(for: .milliseconds(50))
     let generation = RemoteImageStore.shared.generation
     let switched = await model.switchServer(to: secondAddress)
@@ -78,9 +81,14 @@ enum MediaAndHostsSmoke {
       && model.selectedRoom == nil && model.drafts.isEmpty, "Old database state survived a host switch")
     try check(RemoteImageStore.shared.generation > generation, "Private image cache survived switching")
     let oldResult = await staleImage.value
+    await staleForum.value
+    try check(oldForums.details.isEmpty && model.forums.forums.isEmpty && model.forums.path.isEmpty,
+      "Forum content or an old forum response survived switching hosts")
     try check(oldResult == nil, "An old host's image completed after switching")
     let secondLogin = await model.login(username: "fixture", password: "fixture")
     try check(secondLogin && model.session?.user.displayName == "Host B", "Host B login failed")
+    await model.forums.loadThread(700)
+    try check(model.forums.details[700]?.replies.first?.displayName == "Host B", "Forum replies came from the old host's database")
     try check(model.drafts.isEmpty, "Identical user IDs leaked drafts across database ports")
     try check(!model.isConversationMuted(model.conversations[0]), "Mute preferences leaked between hosts")
     try check(model.mediaURL("/api/media/banner.gif")?.port == second.baseURL.port, "Media still used the old host")

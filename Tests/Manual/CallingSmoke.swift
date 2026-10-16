@@ -27,22 +27,31 @@ import AVFoundation
     try check(!commands.contains { $0["type"] == .string("call_ring") }, "Caller rang before microphone permission")
 
     // Teardown during an outstanding permission request must not resurrect media.
-    call.requestMicrophone = { try? await Task.sleep(for: .milliseconds(100)); return true }
+    let cancelledPermission = PermissionGate()
+    call.requestMicrophone = { await cancelledPermission.request() }
     call.start(kind: .voice, id: 9, title: "Lounge", userID: 8)
+    try await waitUntil { cancelledPermission.waiting }
     await call.end()
-    try await Task.sleep(for: .milliseconds(150))
+    cancelledPermission.resolve(true)
+    try await Task.sleep(for: .milliseconds(30))
     try check(call.room == nil && call.localVideo == nil && call.peers.isEmpty, "Cancelled startup resurrected media")
 
     // A dead socket must invalidate startup before its permission result arrives.
+    let disconnectedPermission = PermissionGate()
+    call.requestMicrophone = { await disconnectedPermission.request() }
     call.start(kind: .voice, id: 9, title: "Lounge", userID: 8)
-    try await Task.sleep(for: .milliseconds(20))
+    try await waitUntil { disconnectedPermission.waiting }
     call.connectionChanged(.reconnecting(1))
-    try await Task.sleep(for: .milliseconds(150))
+    disconnectedPermission.resolve(true)
+    try await Task.sleep(for: .milliseconds(30))
     try check(call.room?.id == 9 && call.localVideo == nil, "Disconnected startup restored capture")
+    let reconnectedPermission = PermissionGate()
+    call.requestMicrophone = { await reconnectedPermission.request() }
     call.connectionChanged(.connected)
-    try await Task.sleep(for: .milliseconds(20))
+    try await waitUntil { reconnectedPermission.waiting }
     call.connectionChanged(.reconnecting(1))
-    try await Task.sleep(for: .milliseconds(150))
+    reconnectedPermission.resolve(true)
+    try await Task.sleep(for: .milliseconds(30))
     try check(call.room?.id == 9 && call.localVideo == nil, "A second disconnect restored capture during reconnect")
     await call.end()
 
@@ -167,4 +176,19 @@ import AVFoundation
     if !condition { throw SmokeError.failed(message) }
   }
   enum SmokeError: Error { case failed(String) }
+}
+
+// Hold permission until the test has actually disconnected. Sleep ordering is
+// unreliable on a busy CI runner and can let a valid startup finish too early.
+@MainActor private final class PermissionGate {
+  private var continuation: CheckedContinuation<Bool, Never>?
+  var waiting: Bool { continuation != nil }
+  func request() async -> Bool {
+    await withCheckedContinuation { continuation = $0 }
+  }
+  func resolve(_ allowed: Bool) {
+    let pending = continuation
+    continuation = nil
+    pending?.resume(returning: allowed)
+  }
 }

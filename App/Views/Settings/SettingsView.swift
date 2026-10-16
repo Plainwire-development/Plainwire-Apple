@@ -145,7 +145,7 @@ struct SettingsView: View {
           }
         }
         Section("More tools") {
-          Button("Forums") { model.openWorkspace(fragment: "forums") }
+          Button("Forums") { model.openForums() }
           Button("Source Hub") { model.openWorkspace(fragment: "source") }
           Button("Developer Apps") { model.openWorkspace(fragment: "settings") }
         }.disabled(model.sessionState != .ready)
@@ -332,7 +332,7 @@ struct SettingsView: View {
   private var toolsCard: some View {
     SettingsCard(title: "More tools", symbol: "ellipsis.circle", subtitle: "Additional Plainwire features.") {
       SettingsActionRow(title: "Forums", detail: "Community discussions.", symbol: "text.bubble", actionTitle: "Open") {
-        model.openWorkspace(fragment: "forums")
+        model.openForums()
       }
       SettingsDivider()
       SettingsActionRow(title: "Source Hub", detail: "Projects and source code.", symbol: "chevron.left.forwardslash.chevron.right", actionTitle: "Open") {
@@ -551,14 +551,7 @@ private struct SettingsDivider: View {
 
 extension View {
   fileprivate func settingsSurface(cornerRadius: CGFloat) -> some View {
-    self
-      .background(
-        .regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-      )
-      .overlay {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-          .stroke(.primary.opacity(0.075), lineWidth: 0.5)
-      }
+    cardSurface(cornerRadius: cornerRadius)
   }
 }
 

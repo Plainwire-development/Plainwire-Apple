@@ -737,7 +737,7 @@ public struct PWRTCConfiguration: Codable, Hashable, Sendable {
 
 // Some older endpoints serialize IDs as decimal strings. Decode those losslessly;
 // malformed or out-of-range values still produce a useful decoding error.
-private extension KeyedDecodingContainer {
+extension KeyedDecodingContainer {
   func wireInteger<T: FixedWidthInteger & Decodable>(_ type: T.Type, forKey key: Key) throws -> T {
     if let number = try? decode(T.self, forKey: key) { return number }
     let text = try decode(String.self, forKey: key)

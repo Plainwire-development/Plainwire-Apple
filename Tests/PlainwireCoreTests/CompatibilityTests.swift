@@ -129,7 +129,21 @@ private final class FixtureURLProtocol: URLProtocol {
   override class func canInit(with request: URLRequest) -> Bool { true }
   override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
   override func startLoading() {
-    let (status, body) = Self.responses.response(for: request)
+    var captured = request
+    if captured.httpBody == nil, let stream = captured.httpBodyStream {
+      stream.open()
+      defer { stream.close() }
+      var bytes = Data()
+      var buffer = [UInt8](repeating: 0, count: 4096)
+      while true {
+        let count = stream.read(&buffer, maxLength: buffer.count)
+        if count <= 0 { break }
+        bytes.append(contentsOf: buffer.prefix(count))
+      }
+      captured.httpBodyStream = nil
+      captured.httpBody = bytes
+    }
+    let (status, body) = Self.responses.response(for: captured)
     let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1",
       headerFields: ["Content-Type": "application/json"])!
     client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
@@ -343,4 +357,87 @@ private let fixtureSession = #"{"ok":true,"data":{"user":{"id":4,"username":"ali
   let parsed = PWMessageText.parseBody("[Voice note.m4a](/api/files/a#plainwire-voice-note) [site](https://example.com)")
   #expect(parsed.attachments.first?.kind == .voice)
   #expect(parsed.text == "[site](https://example.com)")
+}
+
+@Test func forumReadsUseTheReferenceBackendRoutesAndSearchEncoding() async throws {
+  try await withFixture({ request in
+    #expect(request.httpMethod == "GET")
+    switch request.url?.path {
+    case "/api/forums":
+      return (200, #"{"ok":true,"data":[{"id":5,"name":"Design","slug":"design","joined":true}]}"#)
+    case "/api/threads":
+      let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
+      #expect(query?.first { $0.name == "forum_id" }?.value == "5")
+      #expect(query?.first { $0.name == "q" }?.value == "hello & 🎉")
+      return (200, #"{"ok":true,"data":[{"id":700,"forum_id":5,"user_id":7,"username":"alice","title":"Hello","body":"A body","score":2,"user_vote":1,"viewer_joined":true}]}"#)
+    case "/api/thread/700":
+      return (200, #"{"ok":true,"data":{"thread":{"id":700,"forum_id":5,"user_id":7,"username":"alice","title":"Hello","body":"A body","can_edit":true,"viewer_joined":true},"replies":[]}}"#)
+    default: return (404, #"{"ok":false,"error":"not_found"}"#)
+    }
+  }) { client in
+    #expect(try await client.forums().first?.id == 5)
+    let threads = try await client.forumThreads(forumID: 5, query: "hello & 🎉")
+    #expect(threads.first?.score == 2 && threads.first?.userVote == 1)
+    #expect(try await client.forumThread(id: 700).thread.canEdit)
+  }
+}
+
+@Test func forumMutationsMatchBackendPayloadsAndUseCSRF() async throws {
+  try await withFixture({ request in
+    if request.url?.path == "/api/me" { return (200, fixtureSession) }
+    #expect(request.httpMethod == "POST")
+    #expect(request.value(forHTTPHeaderField: "X-CSRF-Token") == "fixture-csrf")
+    let body = request.httpBody.flatMap { try? JSONDecoder().decode([String: JSONValue].self, from: $0) } ?? [:]
+    switch request.url?.path {
+    case "/api/forums":
+      #expect(body["name"] == .string("Design") && body["slug"] == .string("design") && body["description"] == .string("Share ideas"))
+      return (200, #"{"ok":true,"data":{"id":5}}"#)
+    case "/api/forum/5/join", "/api/forum/5/leave", "/api/forum/5/delete", "/api/thread/700/delete", "/api/thread/700/reply/9/delete":
+      return (200, #"{"ok":true,"data":{"id":5}}"#)
+    case "/api/threads":
+      #expect(body["forum_id"] == .int(5) && body["title"] == .string("An idea") && body["body"] == .string("**Hello**"))
+      return (200, #"{"ok":true,"data":{"id":700}}"#)
+    case "/api/thread/700/replies":
+      #expect(body["body"] == .string("A reply"))
+      return (200, #"{"ok":true,"data":{"id":9,"thread_id":700,"user_id":4,"username":"alice","body":"A reply"}}"#)
+    case "/api/thread/700/vote":
+      #expect(body["value"] == .int(-1))
+      return (200, #"{"ok":true,"data":{"thread_id":700,"score":-1,"user_vote":-1}}"#)
+    case "/api/thread/700/edit":
+      #expect(body["title"] == .string("Edited") && body["body"] == .string("Edited body"))
+      return (200, #"{"ok":true,"data":{"updated":true}}"#)
+    case "/api/thread/700/moderate":
+      #expect(body["action"] == .string("lock") && body["value"] == .bool(true))
+      return (200, #"{"ok":true,"data":{"updated":true,"locked":true}}"#)
+    case "/api/thread/700/reply/9/edit":
+      #expect(body["body"] == .string("Edited reply"))
+      return (200, #"{"ok":true,"data":{"updated":true}}"#)
+    default: return (404, #"{"ok":false,"error":"not_found"}"#)
+    }
+  }) { client in
+    _ = try await client.restoreSession()
+    #expect(try await client.createForum(name: "Design", slug: "design", description: "Share ideas").id == 5)
+    try await client.forumMembership(id: 5, joined: true)
+    try await client.forumMembership(id: 5, joined: false)
+    #expect(try await client.createForumThread(forumID: 5, title: "An idea", body: "**Hello**").id == 700)
+    #expect(try await client.replyToForumThread(id: 700, body: "A reply").id == 9)
+    #expect(try await client.voteOnForumThread(id: 700, value: -1).userVote == -1)
+    try await client.editForumThread(id: 700, title: "Edited", body: "Edited body")
+    try await client.moderateForumThread(id: 700, action: "lock", value: true)
+    try await client.editForumReply(threadID: 700, replyID: 9, body: "Edited reply")
+    try await client.deleteForumReply(threadID: 700, replyID: 9)
+    try await client.deleteForumThread(id: 700)
+    try await client.deleteForum(id: 5)
+  }
+}
+
+@Test func forumMembershipDenialsDoNotBecomeSuccessfulPosts() async throws {
+  try await withFixture({ request in
+    request.url?.path == "/api/me" ? (200, fixtureSession) : (403, #"{"ok":false,"error":"forum_membership_required"}"#)
+  }) { client in
+    _ = try await client.restoreSession()
+    await #expect(throws: PlainwireAPIError.server(status: 403, code: "forum_membership_required", message: nil)) {
+      try await client.createForumThread(forumID: 5, title: "An idea", body: "A body")
+    }
+  }
 }

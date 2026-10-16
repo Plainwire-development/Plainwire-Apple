@@ -4,6 +4,18 @@
 	classes = {};
 	objectVersion = 56;
 	objects = {
+		511E50DB291904DB5265852B /* Forums.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/PlainwireCore/Forums.swift"; sourceTree = SOURCE_ROOT; };
+		40FC1D6DC3C24D17CD632272 /* Forums.swift in Sources */ = {isa = PBXBuildFile; fileRef = 511E50DB291904DB5265852B; };
+		47A2C96FF12BF3694B87C25E /* ForumStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Model/ForumStore.swift"; sourceTree = SOURCE_ROOT; };
+		55AA0568A47874A8DD8C42FB /* ForumStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47A2C96FF12BF3694B87C25E; };
+		F2D0F8107BC8A5F0502BA5C2 /* PageVisuals.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Shared/PageVisuals.swift"; sourceTree = SOURCE_ROOT; };
+		C43117CC68E1F057E840A883 /* PageVisuals.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D0F8107BC8A5F0502BA5C2; };
+		AFD71A6B4DD095C8AF24D37C /* ForumsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Forums/ForumsView.swift"; sourceTree = SOURCE_ROOT; };
+		9478C724934809F91BFAC935 /* ForumsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFD71A6B4DD095C8AF24D37C; };
+		22BBECD1AA4463A953AE5F39 /* ForumThreadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Forums/ForumThreadView.swift"; sourceTree = SOURCE_ROOT; };
+		EB8B634CF52C5E57D9362D98 /* ForumThreadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22BBECD1AA4463A953AE5F39; };
+		8082CADD8312E7D6C60EB6B1 /* ForumEditors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Forums/ForumEditors.swift"; sourceTree = SOURCE_ROOT; };
+		677E923CAE0F2E0BDDC782AE /* ForumEditors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8082CADD8312E7D6C60EB6B1; };
         C22000000000000000000005 /* GIFPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Chat/GIFPickerSheet.swift"; sourceTree = SOURCE_ROOT; };
         C22000000000000000000006 /* GIFPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22000000000000000000005; };
         C22000000000000000000003 /* ServerHostSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Views/Auth/ServerHostSheet.swift"; sourceTree = SOURCE_ROOT; };
@@ -93,6 +105,12 @@
 		AEF63687048485D45524643C /* Plainwire.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Plainwire.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7B8633C7EB6F5CB13673C25D /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (C21000000000000000000003 /* WebRTC in Frameworks */); runOnlyForDeploymentPostprocessing = 0; };
 		E4F78730D65EE9F55E2BAC2F /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
+			40FC1D6DC3C24D17CD632272 /* Forums.swift in Sources */,
+			55AA0568A47874A8DD8C42FB /* ForumStore.swift in Sources */,
+			C43117CC68E1F057E840A883 /* PageVisuals.swift in Sources */,
+			9478C724934809F91BFAC935 /* ForumsView.swift in Sources */,
+			EB8B634CF52C5E57D9362D98 /* ForumThreadView.swift in Sources */,
+			677E923CAE0F2E0BDDC782AE /* ForumEditors.swift in Sources */,
             C22000000000000000000006 /* GIFPickerSheet.swift in Sources */,
             C22000000000000000000004 /* ServerHostSheet.swift in Sources */,
             C22000000000000000000002 /* RemoteImage.swift in Sources */,
@@ -138,6 +156,12 @@
 		); runOnlyForDeploymentPostprocessing = 0; };
 		6CFC827E67DCAE34C72B9CED = {isa = PBXGroup; children = (932704417AB46D25E8F18983 /* Sources */, D4ED70D4D27623DE041795FF /* Resources */, 021F2B7F3E0C61452C987484 /* Products */); sourceTree = "<group>"; };
 		932704417AB46D25E8F18983 /* Sources */ = {isa = PBXGroup; children = (
+			511E50DB291904DB5265852B /* Forums.swift */,
+			47A2C96FF12BF3694B87C25E /* ForumStore.swift */,
+			F2D0F8107BC8A5F0502BA5C2 /* PageVisuals.swift */,
+			AFD71A6B4DD095C8AF24D37C /* ForumsView.swift */,
+			22BBECD1AA4463A953AE5F39 /* ForumThreadView.swift */,
+			8082CADD8312E7D6C60EB6B1 /* ForumEditors.swift */,
             C22000000000000000000005 /* GIFPickerSheet.swift */,
             C22000000000000000000003 /* ServerHostSheet.swift */,
             C22000000000000000000001 /* RemoteImage.swift */,
@@ -246,13 +270,13 @@
 			ASSETCATALOG_COMPILER_ACCENT_COLOR_NAME = AccentColor;
 			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 			CODE_SIGN_STYLE = Automatic;
-			CURRENT_PROJECT_VERSION = 13;
+			CURRENT_PROJECT_VERSION = 14;
 			ENABLE_PREVIEWS = YES;
 			GENERATE_INFOPLIST_FILE = NO;
 			INFOPLIST_FILE = Resources/Info.plist;
 			IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 			MACOSX_DEPLOYMENT_TARGET = 15.0;
-			MARKETING_VERSION = 2.2.1;
+			MARKETING_VERSION = 2.3.0;
             LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../Frameworks";
 			PRODUCT_BUNDLE_IDENTIFIER = me.kokonico.plainwire;
 			PRODUCT_NAME = "$(TARGET_NAME)";
@@ -270,13 +294,13 @@
 			ASSETCATALOG_COMPILER_ACCENT_COLOR_NAME = AccentColor;
 			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 			CODE_SIGN_STYLE = Automatic;
-			CURRENT_PROJECT_VERSION = 13;
+			CURRENT_PROJECT_VERSION = 14;
 			ENABLE_PREVIEWS = YES;
 			GENERATE_INFOPLIST_FILE = NO;
 			INFOPLIST_FILE = Resources/Info.plist;
 			IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 			MACOSX_DEPLOYMENT_TARGET = 15.0;
-			MARKETING_VERSION = 2.2.1;
+			MARKETING_VERSION = 2.3.0;
             LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../Frameworks";
 			PRODUCT_BUNDLE_IDENTIFIER = me.kokonico.plainwire;
 			PRODUCT_NAME = "$(TARGET_NAME)";

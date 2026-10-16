@@ -5,9 +5,9 @@ struct SidebarView: View {
 
   private var navigationSections: [AppModel.Section] {
     #if os(macOS)
-      [.messages, .servers, .friends, .activity]
+      [.messages, .servers, .forums, .friends, .activity]
     #else
-      [.messages, .servers, .friends, .activity, .settings]
+      [.messages, .servers, .forums, .friends, .activity, .settings]
     #endif
   }
 
@@ -31,8 +31,12 @@ struct SidebarView: View {
       Section("Browse") {
         ForEach(navigationSections) { section in
           HStack {
-            Label(section.title, systemImage: section.systemImage)
-              .fontWeight(model.selectedSection == section ? .semibold : .regular)
+            HStack(spacing: 10) {
+              Image(systemName: section.systemImage).font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(section.accent).frame(width: 28, height: 28)
+                .background(section.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+              Text(section.title).fontWeight(model.selectedSection == section ? .semibold : .medium)
+            }.padding(.vertical, 3)
             Spacer()
             let count = section == .messages ? model.unreadMessageCount : section == .activity ? model.unreadActivityCount : 0
             if count > 0 {
@@ -112,7 +116,6 @@ struct SidebarView: View {
           ConnectionStatusView()
           Spacer(minLength: 0)
           Menu {
-            Button("Forums", systemImage: "text.bubble") { model.openWorkspace(fragment: "forums") }
             Button("Source Hub", systemImage: "chevron.left.forwardslash.chevron.right") { model.openWorkspace(fragment: "source") }
             Button("Developer Apps", systemImage: "hammer") { model.openWorkspace(fragment: "settings") }
           } label: {

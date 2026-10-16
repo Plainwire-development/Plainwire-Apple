@@ -226,7 +226,7 @@ private struct ReactionBar: View {
   }
 }
 
-private struct MessageAttachmentView: View {
+struct MessageAttachmentView: View {
   @Environment(AppModel.self) private var model
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @AppStorage(AppPreferenceKeys.reduceInterfaceMotion) private var reduceInterfaceMotion = false

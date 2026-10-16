@@ -41,7 +41,7 @@ struct AppBackdrop: View {
 
   var body: some View {
     ZStack {
-      Color.windowBackground.ignoresSafeArea()
+      Color.canvas.ignoresSafeArea()
       #if !os(macOS)
       if !reduceTransparency {
       RadialGradient(

@@ -47,6 +47,8 @@ struct ConversationListView: View {
       }
     }
     .modifier(ConversationListStyleModifier())
+    .scrollContentBackground(.hidden)
+    .background(AppBackdrop())
     .overlay {
       if filteredConversations.isEmpty {
         ContentUnavailableView(
@@ -109,9 +111,9 @@ struct ConversationListView: View {
         ConversationRow(conversation: conversation)
       }
       .buttonStyle(.plain)
-      .listRowBackground(
-        model.selectedRoom?.scope == "direct" && model.selectedRoom?.roomID == conversation.id
-          ? Color.accentColor.opacity(0.10) : Color.clear)
+      .listRowBackground(Color.clear)
+      .listRowSeparator(.hidden)
+      .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
     }
   }
 }
@@ -153,10 +155,10 @@ private struct ConversationRow: View {
             Image(systemName: "phone.fill").foregroundStyle(.green)
               .accessibilityLabel("Call in progress")
           }
-          Text(conversation.lastBody.isEmpty ? "No messages yet" : conversation.lastBody)
+          Text(preview)
             .font(.subheadline)
             .foregroundStyle(conversation.unread > 0 ? .primary : .secondary)
-            .lineLimit(1)
+            .lineLimit(2)
           Spacer(minLength: 4)
           if model.drafts["direct:\(conversation.id)"]?.isEmpty == false {
             Text("Draft").font(.caption2.weight(.medium)).foregroundStyle(.orange)
@@ -174,8 +176,34 @@ private struct ConversationRow: View {
         }
       }
     }
-    .padding(.vertical, 5)
-    .contentShape(Rectangle())
+    .padding(12)
+    .background(selected ? Color.accentColor.opacity(0.09) : Color.panel,
+      in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 16, style: .continuous)
+        .strokeBorder(selected ? Color.accentColor.opacity(0.24) : .primary.opacity(0.055), lineWidth: 1)
+    }
+    .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+  }
+
+  private var selected: Bool { model.selectedRoom?.scope == "direct" && model.selectedRoom?.roomID == conversation.id }
+
+  private var preview: AttributedString {
+    let parsed = PWMessageText.parseBody(String(conversation.lastBody.prefix(400)))
+    let text = PWMessageText.redactingSpoilers(parsed.text)
+    if !text.isEmpty {
+      return (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
+    }
+    if let attachment = parsed.attachments.first {
+      if attachment.isSpoiler { return AttributedString("Spoiler attachment") }
+      switch attachment.kind {
+      case .image: return AttributedString("Photo or GIF")
+      case .video: return AttributedString("Video")
+      case .voice: return AttributedString("Voice message")
+      case .file: return AttributedString(attachment.name)
+      }
+    }
+    return AttributedString(conversation.lastBody.isEmpty ? "No messages yet" : "Attachment")
   }
 
   private var conversationDate: String {
@@ -191,7 +219,7 @@ private struct ConversationRow: View {
 private struct ConversationListStyleModifier: ViewModifier {
   @ViewBuilder func body(content: Content) -> some View {
     #if os(macOS)
-      content.listStyle(.sidebar)
+      content.listStyle(.inset)
     #else
       content.listStyle(.insetGrouped)
     #endif

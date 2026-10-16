@@ -112,6 +112,71 @@ public actor PlainwireAPIClient {
   }
 
   public func conversations() async throws -> [PWConversation] { try await get("conversations") }
+  public func forums() async throws -> [PWForum] { try await get("forums") }
+
+  public func forumThreads(forumID: PlainwireID, query: String = "") async throws -> [PWForumThread] {
+    try await get("threads", query: [
+      URLQueryItem(name: "forum_id", value: String(forumID)),
+      URLQueryItem(name: "q", value: query),
+    ])
+  }
+
+  public func forumThread(id: PlainwireID) async throws -> PWForumThreadDetail {
+    try await get("thread/\(id)")
+  }
+
+  public func createForum(name: String, slug: String, description: String) async throws -> PWCreatedForumResource {
+    try await request(method: "POST", path: "forums", body: ["name": name, "slug": slug, "description": description])
+  }
+
+  public func forumMembership(id: PlainwireID, joined: Bool) async throws {
+    let _: EmptyPayload? = try await requestAllowingEmpty(
+      method: "POST", path: "forum/\(id)/\(joined ? "join" : "leave")", body: Optional<EmptyPayload>.none)
+  }
+
+  public func deleteForum(id: PlainwireID) async throws {
+    let _: EmptyPayload? = try await requestAllowingEmpty(
+      method: "POST", path: "forum/\(id)/delete", body: Optional<EmptyPayload>.none)
+  }
+
+  public func createForumThread(forumID: PlainwireID, title: String, body: String) async throws -> PWCreatedForumResource {
+    try await request(method: "POST", path: "threads", body: [
+      "forum_id": JSONValue.int(forumID), "title": .string(title), "body": .string(body),
+    ])
+  }
+
+  public func replyToForumThread(id: PlainwireID, body: String) async throws -> PWForumReply {
+    try await request(method: "POST", path: "thread/\(id)/replies", body: ["body": body])
+  }
+
+  public func voteOnForumThread(id: PlainwireID, value: Int) async throws -> PWForumVote {
+    try await request(method: "POST", path: "thread/\(id)/vote", body: ["value": value])
+  }
+
+  public func editForumThread(id: PlainwireID, title: String, body: String) async throws {
+    let _: EmptyPayload? = try await requestAllowingEmpty(
+      method: "POST", path: "thread/\(id)/edit", body: ["title": title, "body": body])
+  }
+
+  public func moderateForumThread(id: PlainwireID, action: String, value: Bool) async throws {
+    let _: EmptyPayload? = try await requestAllowingEmpty(method: "POST", path: "thread/\(id)/moderate",
+      body: ["action": JSONValue.string(action), "value": .bool(value)])
+  }
+
+  public func deleteForumThread(id: PlainwireID) async throws {
+    let _: EmptyPayload? = try await requestAllowingEmpty(
+      method: "POST", path: "thread/\(id)/delete", body: Optional<EmptyPayload>.none)
+  }
+
+  public func editForumReply(threadID: PlainwireID, replyID: PlainwireID, body: String) async throws {
+    let _: EmptyPayload? = try await requestAllowingEmpty(
+      method: "POST", path: "thread/\(threadID)/reply/\(replyID)/edit", body: ["body": body])
+  }
+
+  public func deleteForumReply(threadID: PlainwireID, replyID: PlainwireID) async throws {
+    let _: EmptyPayload? = try await requestAllowingEmpty(
+      method: "POST", path: "thread/\(threadID)/reply/\(replyID)/delete", body: Optional<EmptyPayload>.none)
+  }
   public func friends() async throws -> [PWFriend] { try await get("friends") }
   public func servers() async throws -> [PWServer] { try await get("servers") }
   public func conversation(id: PlainwireID) async throws -> PWConversationDetail {

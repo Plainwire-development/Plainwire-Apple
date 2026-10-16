@@ -9,10 +9,11 @@ struct ServerChannelBrowserView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      serverHeader
-      Divider().opacity(0.35)
+      serverHeader.cardSurface(cornerRadius: 18).padding(10)
       channelList
     }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(AppBackdrop())
     .navigationTitle("Servers")
     .toolbar {
       ToolbarItem(placement: .primaryAction) {
@@ -89,6 +90,7 @@ struct ServerChannelBrowserView: View {
         if !uncategorized.isEmpty { Section("Channels") { channels(detail, category: nil) } }
       }
       .modifier(ServerListStyleModifier())
+      .scrollContentBackground(.hidden)
     } else if model.servers.isEmpty {
       ContentUnavailableView(
         "No servers", systemImage: "rectangle.3.group",
@@ -116,6 +118,8 @@ struct ServerChannelBrowserView: View {
             Image(systemName: "phone.fill")
               .font(.caption2).foregroundStyle(.secondary)
           }
+          .padding(10)
+          .background(.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityHint("Join this voice channel in Plainwire")
@@ -131,11 +135,13 @@ struct ServerChannelBrowserView: View {
             Text(channel.name).lineLimit(1)
             Spacer(minLength: 0)
           }
-          .contentShape(Rectangle())
+          .padding(10)
+          .background(model.selectedChannelID == channel.id ? Color.accentColor.opacity(0.10) : .clear,
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+          .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
-        .listRowBackground(
-          model.selectedChannelID == channel.id ? Color.accentColor.opacity(0.10) : Color.clear)
+        .listRowBackground(Color.clear)
       }
     }
   }
@@ -152,7 +158,13 @@ struct MobileServersView: View {
   @State private var showingJoinServer = false
 
   var body: some View {
-    List(model.servers) { server in
+    List {
+      Section {
+        PageHeader(title: "Your communities", subtitle: "Familiar faces. Shared interests. A place to belong.",
+          symbol: "rectangle.3.group.fill", accent: .purple, eyebrow: "Servers")
+          .listRowBackground(Color.clear).listRowSeparator(.hidden)
+      }
+      ForEach(model.servers) { server in
       NavigationLink {
         MobileServerChannelsView(server: server)
       } label: {
@@ -165,10 +177,14 @@ struct MobileServersView: View {
             Text("\(server.memberCount) members").font(.caption).foregroundStyle(.secondary)
           }
         }
-        .padding(.vertical, 4)
+        .padding(14).frame(maxWidth: .infinity, alignment: .leading).cardSurface(cornerRadius: 16)
+      }
+      .listRowBackground(Color.clear).listRowSeparator(.hidden)
       }
     }
     .modifier(MobileServerListStyleModifier())
+    .scrollContentBackground(.hidden)
+    .background(AppBackdrop())
     .navigationTitle("Servers")
     .toolbar {
       ToolbarItem(placement: .primaryAction) {

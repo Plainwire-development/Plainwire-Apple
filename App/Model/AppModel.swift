@@ -9,13 +9,14 @@ import FoundationNetworking
 final class AppModel {
   enum SessionState: Equatable { case booting, signedOut, ready, unavailable }
   enum Section: String, CaseIterable, Identifiable {
-    case messages, servers, friends, activity, settings
+    case messages, servers, forums, friends, activity, settings
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
     var systemImage: String {
       switch self {
       case .messages: "message.fill"
       case .servers: "rectangle.3.group.fill"
+      case .forums: "text.bubble.fill"
       case .friends: "person.2.fill"
       case .activity: "bell.fill"
       case .settings: "gearshape.fill"
@@ -102,6 +103,7 @@ final class AppModel {
   var messageJumpID: PlainwireID?
   var contextRooms = Set<String>()
   var workspace: WorkspaceController
+  var forums: ForumStore
   var showWorkspace = false
   var showSettings = false
   var showServerPicker = false
@@ -145,7 +147,9 @@ final class AppModel {
       serverAddress: UserDefaults.standard.string(forKey: AppPreferenceKeys.serverAddress) ?? ""))
       ?? PlainwireConfiguration()
     self.config = config
-    api = PlainwireAPIClient(configuration: config)
+    let client = PlainwireAPIClient(configuration: config)
+    api = client
+    forums = ForumStore(api: client)
     realtime = PlainwireRealtimeClient(configuration: config)
     workspace = WorkspaceController(configuration: config)
     RemoteImageStore.shared.configure(config)
@@ -185,6 +189,7 @@ final class AppModel {
       await api.invalidate()
       config = next
       api = PlainwireAPIClient(configuration: next)
+      forums = ForumStore(api: api)
       realtime = PlainwireRealtimeClient(configuration: next)
       workspace = WorkspaceController(configuration: next)
       RemoteImageStore.shared.configure(next)
@@ -323,6 +328,7 @@ final class AppModel {
     guard generation == sessionGeneration, session != nil else { return }
     // An unavailable panel must not discard a valid authenticated session.
     sessionState = .ready
+    forums.activate()
     await realtime.setPresenceStatus(session?.user.status ?? "online")
     startRealtimeTasks()
     if let link = pendingDeepLink {
@@ -376,6 +382,8 @@ final class AppModel {
     signingOut = true
     if preservingDrafts { flushDrafts() }
     sessionGeneration += 1
+    forums.reset()
+    forums = ForumStore(api: api)
     isBusy = true
     await calls.end()
     calls.reset()
@@ -477,6 +485,7 @@ final class AppModel {
         guard generation == sessionGeneration else { return }
         serverDetails[id] = detail
       }
+      if selectedSection == .forums { await forums.refreshVisible() }
     } catch PlainwireAPIError.notAuthenticated {
       if generation == sessionGeneration { await logout() }
     } catch {
@@ -1454,7 +1463,23 @@ final class AppModel {
       errorMessage = "This voice channel is unavailable."
       return
     }
-    if let first = parts.first, ["wire", "invite", "forums", "f", "t", "thread", "source", "profile"].contains(first) {
+    if let first = parts.first, ["forums", "forum", "f", "t", "thread"].contains(first) {
+      selectedSection = .forums
+      await forums.loadForums()
+      guard generation == sessionGeneration, !Task.isCancelled else { return }
+      if ["t", "thread"].contains(first), parts.count > 1, let id = Int64(parts[1]), id > 0 {
+        await forums.loadThread(id)
+        guard generation == sessionGeneration else { return }
+        if let thread = forums.details[id]?.thread { forums.path = [.forum(thread.forumId), .thread(id)] }
+        else { forums.path = [.thread(id)] }
+      } else if parts.count > 1,
+        let forum = forums.forums.first(where: { String($0.id) == parts[1] || $0.slug == parts[1] }) {
+        forums.path = [.forum(forum.id)]
+      } else { forums.path = [] }
+      await updateRealtimeSubscriptions()
+      return
+    }
+    if let first = parts.first, ["wire", "invite", "source", "profile"].contains(first) {
       openWorkspace(fragment: parts.joined(separator: "/"))
       return
     }
@@ -1497,6 +1522,21 @@ final class AppModel {
     await updateRealtimeSubscriptions()
   }
 
+  func openForums() { selectedSection = .forums }
+
+  func synchronizeForumSubscriptions() async { await updateRealtimeSubscriptions() }
+
+  func receiveForumEvent(_ event: PlainwireRealtimeEvent) {
+    guard sessionState == .ready, !signingOut else { return }
+    forums.receive(event)
+    if selectedSection == .forums {
+      scheduleRealtimeWork(key: "forums") { model in
+        await model.forums.refreshVisible()
+        await model.updateRealtimeSubscriptions()
+      }
+    }
+  }
+
   private func updatePresenceWatch() async {
     var ids = Set(profilePresenceWatches.values)
     if let id = session?.user.id { ids.insert(id) }
@@ -1528,6 +1568,7 @@ final class AppModel {
 
   private func updateRealtimeSubscriptions() async {
     var subscriptions = Set<String>()
+    if selectedSection == .forums { subscriptions.formUnion(forums.subscriptions) }
     if let room = selectedRoom,
       (selectedSection == .messages && room.scope == "direct") || (selectedSection == .servers && room.scope == "channel") {
       subscriptions.insert("\(room.scope):\(room.roomID)")
@@ -1643,6 +1684,9 @@ final class AppModel {
       scheduleSync(delay: .milliseconds(100))
     case "realtime_resync":
       scheduleRealtimeWork(key: "resync") { model in await model.refresh() }
+    case "thread_created", "thread_updated", "thread_deleted", "thread_reply", "thread_reply_updated",
+      "thread_reply_deleted", "forum_deleted":
+      receiveForumEvent(event)
     case "message_created":
       if let message = event.message {
         upsert(message, in: "\(message.scope):\(message.scopeId)")

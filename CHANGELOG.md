@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.3.0
+
+- Add native Forums with community discovery, joined filters, discussion search and sorting, Markdown previews, attachments, persistent drafts, replies, voting, and sharing. Forum owners can pin, close, and delete discussions; authors can edit their own posts according to server permissions.
+- Match the existing Plainwire forum API and realtime events. Keep website and native content together, route discussion links natively, reject stale searches and deleted forums/discussions/replies, and clear forum state across accounts and hosts.
+- Refresh Messages, servers, Friends, Activity, Settings, sign-in, and empty states with adaptive colors, rounded cards and controls, clearer typography, and roomier layouts. Preserve native scrolling, appearance, accessibility preferences, and animated image caching.
+- Keep five visible iPhone tabs by grouping Friends and Activity in People. Headers stack at accessibility text sizes, and empty Activity content stays below its controls.
+- Validate forum text using the backend's UTF-8 limits so emoji-heavy posts are not silently truncated. Bound the discussion detail cache and debounce server searches and realtime refreshes.
+- Add forum API, permissions, cross-client sync, moderation, deletion, host-isolation, and layout checks. Make the calling startup-cancellation smoke check wait for permission state instead of relying on a fixed delay.
+
 ## 2.2.1
 
 - Make Mac profile, account, conversation, server, and channel forms scroll with native grouped layouts. Allow sheets to resize, improve long text and member rows, and keep compact windows usable.
