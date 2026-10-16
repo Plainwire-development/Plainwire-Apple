@@ -6,7 +6,20 @@ import Observation
 // GestureState callback. This mounts the replacement native handle in SwiftUI
 // and drives its AppKit pointer entry points while the panel moves beneath it.
 @main struct CallPanelSmoke {
-  @MainActor static func main() async throws {
+  @MainActor static func main() async {
+    NSSetUncaughtExceptionHandler { exception in
+      let detail = "Uncaught AppKit exception: \(exception.name.rawValue): \(exception.reason ?? "unknown")\n"
+        + exception.callStackSymbols.joined(separator: "\n") + "\n"
+      FileHandle.standardError.write(Data(detail.utf8))
+    }
+    do { try await run() }
+    catch {
+      FileHandle.standardError.write(Data("Native smoke check failed: \(error)\n".utf8))
+      exit(1)
+    }
+  }
+
+  @MainActor private static func run() async throws {
     NSApplication.shared.setActivationPolicy(.prohibited)
     let fixture = Fixture()
     let host = NSHostingView(rootView: PanelFixture(fixture: fixture))

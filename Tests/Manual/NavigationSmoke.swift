@@ -51,10 +51,12 @@ import SwiftUI
     // Load fixture data before mounting the UI. A fixed layout delay is not a
     // network completion signal, and clearing a loaded room bypasses its cache.
     model.selectedRoom = .init(scope: "channel", roomID: 801, title: "First channel")
+    progress("Loading channel fixture")
     await model.loadSelectedRoom()
     try check(!(model.roomMessages["channel:801"] ?? []).isEmpty,
       "The channel fixture failed to load: \(model.errorMessage ?? "empty response")")
     model.selectedRoom = nil
+    progress("Channel fixture ready (\(model.roomMessages["channel:801"]?.count ?? 0) messages)")
 
     let controller = NSHostingController(rootView: AppRootView().environment(model).frame(minWidth: 920, minHeight: 620))
     let window = NSWindow(contentViewController: controller)
@@ -66,6 +68,7 @@ import SwiftUI
     defer { window.orderOut(nil) }
 
     for size in [NSSize(width: 1180, height: 760), NSSize(width: 980, height: 640), NSSize(width: 1720, height: 900)] {
+      progress("Conversation window \(size)")
       window.setContentSize(size)
       try await settle(controller.view)
       try verifyBounds(controller.view)
@@ -79,6 +82,7 @@ import SwiftUI
     }
     window.setContentSize(NSSize(width: 1180, height: 760))
     for section in [AppModel.Section.servers, .friends, .activity, .forums, .messages] {
+      progress("Section \(section.rawValue)")
       model.selectedRoom = section == .servers ? .init(scope: "channel", roomID: 801, title: "First channel") : nil
       model.selectedChannelID = 801
       model.selectedSection = section
@@ -88,10 +92,12 @@ import SwiftUI
     }
     model.selectedSection = .servers
     model.selectedRoom = .init(scope: "channel", roomID: 801, title: "First channel", subtitle: "A welcoming place for everyone")
+    progress("Populated channel (\(model.roomMessages["channel:801"]?.count ?? 0) cached messages)")
     try await settle(controller.view)
     try check(model.errorMessage == nil, "The populated chat fixture failed to load")
     try check(!(model.roomMessages["channel:801"] ?? []).isEmpty, "The chat layout was checked without messages")
     for size in [NSSize(width: 980, height: 640), NSSize(width: 1720, height: 900)] {
+      progress("Chat window \(size)")
       window.setContentSize(size)
       try await settle(controller.view)
       try verifyBounds(controller.view)
@@ -102,12 +108,14 @@ import SwiftUI
     }
     window.setContentSize(NSSize(width: 1180, height: 760))
     for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+      progress("Appearance \(name)")
       window.appearance = NSAppearance(named: appearance)
       try await settle(controller.view)
       try verifyBounds(controller.view)
       try capture(controller.view, path: "/tmp/plainwire-navigation-\(name).png")
     }
     model.errorMessage = "A connection notice should leave every page header and control visible."
+    progress("Connection and download notices")
     model.downloadingAttachment = true
     try await settle(controller.view)
     try verifyBounds(controller.view)
@@ -119,6 +127,10 @@ import SwiftUI
 
   private static func decode<T: Decodable>(_ object: Any) throws -> T {
     try JSONDecoder().decode(T.self, from: JSONSerialization.data(withJSONObject: object))
+  }
+
+  private static func progress(_ message: String) {
+    FileHandle.standardError.write(Data("Navigation smoke: \(message)\n".utf8))
   }
 
   private static func settle(_ view: NSView) async throws {

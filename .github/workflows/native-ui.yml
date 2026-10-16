@@ -1,0 +1,28 @@
+name: Native UI diagnostics
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-ui:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4.4.0
+      - name: Use Xcode 26.6
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app
+      - name: Native UI checks
+        run: script -q /dev/null ./scripts/verify-calling.sh
+      - name: Native process logs
+        if: failure()
+        run: /usr/bin/log show --last 5m --style compact --predicate 'process == "PlainwireSmoke"' | tail -200
+      - name: Save layout captures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-ui-layouts
+          path: /tmp/plainwire-navigation-*.png
+          if-no-files-found: ignore
+          retention-days: 7
