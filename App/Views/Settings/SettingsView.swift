@@ -15,6 +15,9 @@ struct SettingsView: View {
   @AppStorage(AppPreferenceKeys.notificationSounds) private var notificationSounds = true
   @AppStorage(AppPreferenceKeys.reduceInterfaceMotion) private var reduceInterfaceMotion = false
   @AppStorage(AppPreferenceKeys.compactMessages) private var compactMessages = false
+  @AppStorage(AppPreferenceKeys.autoplayAnimatedMedia) private var autoplayAnimatedMedia = true
+  @AppStorage(AppPreferenceKeys.enterSendsMessage) private var enterSendsMessage = true
+  @State private var confirmingDraftClear = false
   #if os(macOS)
     @AppStorage(AppPreferenceKeys.optionScrollVideoSeeking) private var optionScrollVideoSeeking = true
   #endif
@@ -22,7 +25,7 @@ struct SettingsView: View {
   @State private var activeSheet: SettingsSheet?
 
   private enum SettingsSheet: String, Identifiable {
-    case profile, account
+    case profile, account, server
     var id: String { rawValue }
   }
 
@@ -30,6 +33,136 @@ struct SettingsView: View {
   var detailPresentation = false
 
   var body: some View {
+    Group {
+      #if os(macOS)
+        macSettings
+      #else
+        mobileSettings
+      #endif
+    }
+    .modifier(OptionalNavigationTitle(enabled: showNavigationTitle, title: "Settings"))
+    .task { await refreshNotificationStatus() }
+    .onChange(of: scenePhase) { _, phase in
+      if phase == .active { Task { await refreshNotificationStatus() } }
+    }
+    .sheet(item: $activeSheet) { sheet in
+      switch sheet {
+      case .profile:
+        if let user = model.session?.user { ProfileEditorSheet(user: user) }
+      case .account:
+        AccountSecuritySheet()
+      case .server:
+        ServerHostSheet()
+      }
+    }
+    .confirmationDialog("Clear all message drafts for this account?", isPresented: $confirmingDraftClear, titleVisibility: .visible) {
+      Button("Clear Drafts", role: .destructive) { model.clearDrafts() }
+    }
+  }
+
+  #if os(macOS)
+  private var macSettings: some View {
+    TabView {
+      Form {
+        if let user = model.session?.user {
+          Section {
+            ProfileSettingsHeader(user: user)
+            Button("Edit Profile…") { activeSheet = .profile }
+          }
+          Section("Status") {
+            Picker("Appear as", selection: Binding(get: { model.session?.user.status ?? "online" },
+              set: { status in Task { await model.setStatus(status) } })) {
+              Text("Online").tag("online")
+              Text("Away").tag("away")
+              Text("Do Not Disturb").tag("busy")
+              Text("Invisible").tag("invisible")
+            }
+          }
+        } else {
+          Text("Sign in to customize your profile.").foregroundStyle(.secondary)
+        }
+      }.formStyle(.grouped)
+        .tabItem { Label("Profile", systemImage: "person.crop.circle") }
+      Form {
+        Section("Messages") {
+          Toggle("Enter sends messages", isOn: $enterSendsMessage)
+          Text("Command-Return always sends. With this option off, Return inserts a new line.")
+            .font(.caption).foregroundStyle(.secondary)
+          Toggle("Send typing indicators", isOn: $sendTypingIndicators)
+          Toggle("Use compact message spacing", isOn: $compactMessages)
+        }
+        Section("Media and motion") {
+          Toggle("Autoplay animated avatars, banners, and images", isOn: $autoplayAnimatedMedia)
+          Toggle("Reduce interface motion", isOn: $reduceInterfaceMotion)
+          Text("Animated images pause when offscreen, when the app is inactive, and when Reduce Motion is enabled.")
+            .font(.caption).foregroundStyle(.secondary)
+          Toggle("Option-scroll to seek videos", isOn: $optionScrollVideoSeeking)
+        }
+        Section("Drafts") {
+          LabeledContent("Saved on this host", value: "\(model.drafts.values.filter { !$0.isEmpty }.count)")
+          Button("Clear Local Drafts…", role: .destructive) { confirmingDraftClear = true }
+        }
+      }.formStyle(.grouped)
+        .tabItem { Label("Chat", systemImage: "bubble.left.and.text.bubble.right") }
+      Form {
+        Section("Message alerts") {
+          Toggle("Include message previews", isOn: $notificationPreviews)
+          Toggle("Play notification sounds", isOn: $notificationSounds)
+          if notificationStatus == .authorized || notificationStatus == .provisional {
+            Label("System notifications are enabled", systemImage: "checkmark.circle")
+          } else if notificationStatus == .denied {
+            Button("Open Notification Settings…", action: openNotificationSettings)
+          } else {
+            Button("Enable Notifications…") {
+              Task {
+                await NotificationCoordinator.shared.requestAuthorization()
+                await refreshNotificationStatus()
+              }
+            }
+          }
+        }
+      }.formStyle(.grouped)
+        .tabItem { Label("Notifications", systemImage: "bell") }
+      Form {
+        Section("Connection") {
+          LabeledContent("Server host") { Text(model.serverAddress).textSelection(.enabled) }
+          LabeledContent("Realtime", value: realtimeLabel)
+          if let date = model.lastSyncAt {
+            LabeledContent("Last sync", value: date.formatted(date: .omitted, time: .standard))
+          }
+          HStack {
+            Button("Sync Now") { Task { await model.refresh() } }.disabled(model.sessionState != .ready)
+            Button("Switch Server Host…") { activeSheet = .server }.disabled(model.isBusy)
+          }
+        }
+        Section("More tools") {
+          Button("Forums") { model.openWorkspace(fragment: "forums") }
+          Button("Source Hub") { model.openWorkspace(fragment: "source") }
+          Button("Developer Apps") { model.openWorkspace(fragment: "settings") }
+        }.disabled(model.sessionState != .ready)
+        Section("About") {
+          LabeledContent("Plainwire for Mac", value: PlainwireClientInfo.version)
+          Link("Open Server Website", destination: model.appURL())
+        }
+      }.formStyle(.grouped)
+        .tabItem { Label("Connection", systemImage: "network") }
+      Form {
+        Section("Security") {
+          Button("Manage Security and Sessions…") { activeSheet = .account }
+          Text("Update your username, email, password, and signed-in devices.")
+            .font(.caption).foregroundStyle(.secondary)
+        }
+        Section {
+          Button("Sign Out", role: .destructive) { Task { await model.logout() } }
+        }
+      }.formStyle(.grouped).disabled(model.sessionState != .ready)
+        .tabItem { Label("Account", systemImage: "key.horizontal") }
+    }
+    .frame(minWidth: 600, minHeight: 480)
+  }
+  #endif
+
+  private var mobileSettings: some View {
     ZStack {
       AppBackdrop()
       ScrollView {
@@ -44,19 +177,6 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity)
       }
       .scrollIndicators(.automatic)
-    }
-    .modifier(OptionalNavigationTitle(enabled: showNavigationTitle, title: "Settings"))
-    .task { await refreshNotificationStatus() }
-    .onChange(of: scenePhase) { _, phase in
-      if phase == .active { Task { await refreshNotificationStatus() } }
-    }
-    .sheet(item: $activeSheet) { sheet in
-      switch sheet {
-      case .profile:
-        if let user = model.session?.user { ProfileEditorSheet(user: user) }
-      case .account:
-        AccountSecuritySheet()
-      }
     }
   }
 
@@ -114,6 +234,17 @@ struct SettingsView: View {
         isOn: $compactMessages)
       SettingsDivider()
       SettingsToggleRow(
+        title: "Autoplay animated media", detail: "Animate GIF avatars, banners, and images while visible. Reduce Motion pauses playback.",
+        isOn: $autoplayAnimatedMedia)
+      SettingsDivider()
+      SettingsToggleRow(
+        title: "Enter sends messages", detail: "Turn off to insert a new line. Command-Return always sends.",
+        isOn: $enterSendsMessage)
+      SettingsDivider()
+      SettingsActionRow(title: "Clear local drafts", detail: "Remove saved drafts for this account on this host.",
+        symbol: "eraser", actionTitle: "Clear") { confirmingDraftClear = true }
+      SettingsDivider()
+      SettingsToggleRow(
         title: "Reduce interface motion",
         detail: "Use simpler transitions in addition to system Reduce Motion.",
         isOn: $reduceInterfaceMotion)
@@ -166,9 +297,10 @@ struct SettingsView: View {
   private var connectionCard: some View {
     SettingsCard(
       title: "Connection", symbol: "network",
-      subtitle: "Messages sync with plainwi.re."
+      subtitle: "Messages sync with \(model.serverDisplayName)."
     ) {
-      SettingsValueRow(title: "Server", value: "plainwi.re", symbol: "lock.shield")
+      SettingsActionRow(title: "Server host", detail: model.serverAddress,
+        symbol: "network", actionTitle: "Switch") { activeSheet = .server }
       SettingsDivider()
       SettingsValueRow(title: "Realtime", value: realtimeLabel, symbol: realtimeSymbol)
       if let date = model.lastSyncAt {
@@ -212,9 +344,9 @@ struct SettingsView: View {
         title: "Version", value: PlainwireClientInfo.version, symbol: "number")
       SettingsDivider()
       SettingsActionRow(
-        title: "Website", detail: "plainwi.re", symbol: "globe", actionTitle: "Open"
+        title: "Website", detail: model.serverDisplayName, symbol: "globe", actionTitle: "Open"
       ) {
-        if let url = URL(string: "https://plainwi.re") { openURL(url) }
+        openURL(model.appURL())
       }
     }
   }
@@ -319,8 +451,23 @@ private struct ConnectionMiniPill: View {
     .accessibilityElement(children: .combine)
   }
 
-  private var color: Color { model.realtimeState == .connected ? .green : .orange }
-  private var label: String { model.realtimeState == .connected ? "Connected" : "Connecting" }
+  private var color: Color {
+    switch model.realtimeState {
+    case .connected: .green
+    case .connecting, .reconnecting: .orange
+    case .failed: .red
+    case .stopped: .secondary
+    }
+  }
+  private var label: String {
+    switch model.realtimeState {
+    case .connected: "Connected"
+    case .connecting: "Connecting"
+    case .reconnecting: "Reconnecting"
+    case .failed: "Offline"
+    case .stopped: "Not connected"
+    }
+  }
 }
 
 private struct SettingsCard<Content: View>: View {
@@ -476,10 +623,16 @@ private struct ProfileEditorSheet: View {
         Section("Identity") {
           TextField("Display name", text: $displayName)
             .textContentType(.name)
-          TextField("Status", text: $status)
+          Picker("Status", selection: $status) {
+            Text("Online").tag("online")
+            Text("Away").tag("away")
+            Text("Do Not Disturb").tag("busy")
+            Text("Invisible").tag("invisible")
+          }
           TextField("Bio", text: $bio, axis: .vertical).lineLimit(3...7)
         }
         Section("Images") {
+          TextField("Avatar URL", text: $avatarURL).textContentType(.URL).autocorrectionDisabled()
           HStack {
             RemoteAvatar(url: model.mediaURL(avatarURL), fallback: String(displayName.prefix(1)), size: 56)
             Spacer()
@@ -492,6 +645,9 @@ private struct ProfileEditorSheet: View {
             }
             .frame(height: 110).clipped().cornerRadius(12)
           }
+          TextField("Banner URL", text: $bannerURL).textContentType(.URL).autocorrectionDisabled()
+          Text("Choose an image or paste its URL. GIFs keep their animation.")
+            .font(.caption).foregroundStyle(.secondary)
           Button("Choose banner") { imageField = "banner"; pickingImage = true }
           Button("Remove avatar", role: .destructive) { avatarURL = "" }
           Button("Remove banner", role: .destructive) { bannerURL = "" }

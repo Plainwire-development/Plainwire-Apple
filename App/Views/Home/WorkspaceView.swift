@@ -23,7 +23,12 @@ final class WorkspaceController: NSObject, WKNavigationDelegate, WKUIDelegate, W
   var dialogIsConfirmation = false
   var downloadedFile: URL?
   private var prepared = false
-  private let baseURL = PlainwireConfiguration().baseURL
+  private let baseURL: URL
+
+  init(configuration: PlainwireConfiguration = PlainwireConfiguration()) {
+    baseURL = configuration.appURL()
+    super.init()
+  }
 
   func view(onSessionEnded: @escaping () -> Void) -> WKWebView {
     self.onSessionEnded = onSessionEnded

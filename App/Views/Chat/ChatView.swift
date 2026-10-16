@@ -21,6 +21,7 @@ struct ChatView: View {
 
   @State private var sending = false
   @State private var voiceNoteRoom: AppModel.Room?
+  @State private var gifPickerRoom: AppModel.Room?
   @State private var importerRoom: AppModel.Room?
   @State private var forwardingMessage: PWMessage?
   @State private var showingPins = false
@@ -148,6 +149,7 @@ struct ChatView: View {
       return true
     }
     .sheet(item: $voiceNoteRoom) { VoiceNoteSheet(room: $0) }
+    .sheet(item: $gifPickerRoom) { GIFPickerSheet(room: $0) }
     .sheet(item: $forwardingMessage) { ForwardMessageSheet(message: $0) }
     .sheet(isPresented: $showingPins) {
       if let room = model.selectedRoom, room.scope == "channel" { PinnedMessagesSheet(channelID: room.roomID) }
@@ -225,6 +227,7 @@ struct ChatView: View {
           onCancelReply: { replyingTo = nil },
           onAttach: { importerRoom = model.selectedRoom; attachAsSpoiler = false; showImporter = true },
           onRecordVoiceNote: { voiceNoteRoom = model.selectedRoom },
+          onChooseGIF: { gifPickerRoom = model.selectedRoom },
           onAttachSpoiler: { importerRoom = model.selectedRoom; attachAsSpoiler = true; showImporter = true }, onSend: send
         )
         .focused($composerFocused)
@@ -309,6 +312,7 @@ struct ChatView: View {
             }
             ForEach(rows) { presentation in
               MessageRow(presentation: presentation)
+                .equatable()
                 .id(presentation.id)
                 .contextMenu { messageMenu(presentation.message) }
             }
@@ -436,7 +440,7 @@ struct ChatView: View {
     }
 
     Button { forwardingMessage = message } label: { Label("Forward", systemImage: "arrowshape.turn.up.right") }
-    Button { copyMessage("https://plainwi.re/#\(message.scope == "direct" ? "dm" : "channel")/\(message.scopeId)") }
+    Button { copyMessage(model.appURL(fragment: "\(message.scope == "direct" ? "dm" : "channel")/\(message.scopeId)").absoluteString) }
       label: { Label("Copy Conversation Link", systemImage: "link") }
     if message.scope == "channel", model.canPinMessages {
       Button { Task { _ = await model.togglePin(message) } }

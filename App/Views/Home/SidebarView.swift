@@ -12,13 +12,16 @@ struct SidebarView: View {
   }
 
   var body: some View {
-    List {
+    List(selection: Binding<AppModel.Section?>(
+      get: { model.selectedSection },
+      set: { if let section = $0 { model.selectedSection = section } })) {
       Section {
         HStack(spacing: 10) {
           PlainwireMark(size: 30)
           VStack(alignment: .leading, spacing: 1) {
             Text("Plainwire").font(.headline)
-            Text("Your conversations, together").font(.caption2).foregroundStyle(.secondary)
+            Text(model.serverDisplayName).font(.caption2).foregroundStyle(.secondary)
+              .lineLimit(1).truncationMode(.middle)
           }
         }
         .padding(.vertical, 5)
@@ -27,27 +30,20 @@ struct SidebarView: View {
 
       Section("Browse") {
         ForEach(navigationSections) { section in
-          Button {
-            model.selectedSection = section
-          } label: {
-            HStack {
-              Label(section.title, systemImage: section.systemImage)
-                .fontWeight(model.selectedSection == section ? .semibold : .regular)
-              Spacer()
-              let count = section == .messages ? model.unreadMessageCount : section == .activity ? model.unreadActivityCount : 0
-              if count > 0 {
-                Text(count > 99 ? "99+" : "\(count)").font(.caption2.bold()).monospacedDigit()
-                  .padding(.horizontal, 6).padding(.vertical, 2)
-                  .background(Color.accentColor.opacity(0.15), in: Capsule())
-              }
-            }.contentShape(Rectangle())
-          }
-          .buttonStyle(.plain)
-          .listRowBackground(
-            model.selectedSection == section ? Color.accentColor.opacity(0.13) : Color.clear)
+          HStack {
+            Label(section.title, systemImage: section.systemImage)
+              .fontWeight(model.selectedSection == section ? .semibold : .regular)
+            Spacer()
+            let count = section == .messages ? model.unreadMessageCount : section == .activity ? model.unreadActivityCount : 0
+            if count > 0 {
+              Text(count > 99 ? "99+" : "\(count)").font(.caption2.bold()).monospacedDigit()
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(Color.accentColor.opacity(0.15), in: Capsule())
+            }
+          }.contentShape(Rectangle())
+          .tag(section)
         }
       }
-
 
       if !model.servers.isEmpty {
         Section("Servers") {
@@ -74,16 +70,40 @@ struct SidebarView: View {
     .safeAreaInset(edge: .bottom) {
       VStack(spacing: 8) {
         if let user = model.session?.user {
-          HStack(spacing: 9) {
-            RemoteAvatar(
-              url: model.mediaURL(user.avatarURL), fallback: String(user.displayName.prefix(1)),
-              size: 30)
-            VStack(alignment: .leading, spacing: 1) {
-              Text(user.displayName).font(.caption.weight(.semibold)).lineLimit(1)
-              Text("@\(user.username)").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+          Menu {
+            ForEach(["online", "away", "busy", "invisible"], id: \.self) { status in
+              Button {
+                Task { await model.setStatus(status) }
+              } label: {
+                Label(status == "busy" ? "Do Not Disturb" : status.capitalized,
+                  systemImage: user.status == status ? "checkmark.circle.fill" : "circle")
+              }
             }
-            Spacer(minLength: 0)
+            Divider()
+            Button("Settings…", systemImage: "gearshape") {
+              #if os(macOS)
+                model.showSettings = true
+              #else
+                model.selectedSection = .settings
+              #endif
+            }
+            Button("Switch Server Host…", systemImage: "network") { model.showServerPicker = true }
+          } label: {
+            HStack(spacing: 9) {
+              RemoteAvatar(
+                url: model.mediaURL(user.avatarURL), fallback: String(user.displayName.prefix(1)),
+                size: 30)
+              VStack(alignment: .leading, spacing: 1) {
+                Text(user.displayName).font(.caption.weight(.semibold)).lineLimit(1)
+                Text("@\(user.username)").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+              }
+              Spacer(minLength: 0)
+              Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(.secondary)
+            }
           }
+          .menuStyle(.borderlessButton)
+          .help("Profile and status")
+          .accessibilityLabel("Account menu for \(user.displayName)")
           .padding(.horizontal, 10)
         }
         HStack(spacing: 8) {

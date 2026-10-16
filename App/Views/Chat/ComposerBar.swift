@@ -3,15 +3,18 @@ import SwiftUI
 struct ComposerBar: View {
   @Environment(AppModel.self) private var model
   @AppStorage(AppPreferenceKeys.sendTypingIndicators) private var sendTypingIndicators = true
+  @AppStorage(AppPreferenceKeys.enterSendsMessage) private var enterSendsMessage = true
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @AppStorage(AppPreferenceKeys.reduceInterfaceMotion) private var reduceInterfaceMotion = false
   @Binding var text: String
+  @State private var selection: TextSelection?
   let uploading: Bool
   let sending: Bool
   let replyingTo: PWMessage?
   let onCancelReply: () -> Void
   let onAttach: () -> Void
   let onRecordVoiceNote: () -> Void
+  let onChooseGIF: () -> Void
   let onAttachSpoiler: () -> Void
   let onSend: () -> Void
 
@@ -88,6 +91,15 @@ struct ComposerBar: View {
             Button("Attach files", systemImage: "paperclip", action: onAttach)
             Button("Attach as spoiler", systemImage: "eye.slash", action: onAttachSpoiler)
             Button("Record Voice Note", systemImage: "mic", action: onRecordVoiceNote)
+            Divider()
+            Menu("Formatting", systemImage: "textformat") {
+              Button("Bold") { insertFormat(prefix: "**", suffix: "**", placeholder: "bold text") }
+              Button("Italic") { insertFormat(prefix: "*", suffix: "*", placeholder: "italic text") }
+              Button("Inline Code") { insertFormat(prefix: "`", suffix: "`", placeholder: "code") }
+              Button("Code Block") { insertFormat(prefix: "\n```\n", suffix: "\n```\n", placeholder: "code") }
+              Button("Quote") { insertFormat(prefix: "\n> ", suffix: "\n", placeholder: "quote") }
+              Button("Spoiler") { insertFormat(prefix: "||", suffix: "||", placeholder: "spoiler") }
+            }
           } label: {
             Group {
               if uploading {
@@ -104,7 +116,16 @@ struct ComposerBar: View {
           .disabled(uploading || !model.canSendInSelectedRoom)
           .accessibilityLabel(uploading ? "Uploading attachments" : "Attach files")
 
-          TextField("Message \(model.selectedRoom?.title ?? "")", text: $text, axis: .vertical)
+          Button(action: onChooseGIF) {
+            Text("GIF").font(.system(size: 10, weight: .bold, design: .rounded))
+              .frame(width: 24, height: 24)
+          }
+          .adaptiveGlassButton().controlSize(.small)
+          .disabled(uploading || !model.canSendInSelectedRoom)
+          .keyboardShortcut("g", modifiers: .command)
+          .help("Search GIFs").accessibilityLabel("Search GIFs")
+
+          TextField("Message \(model.selectedRoom?.title ?? "")", text: $text, selection: $selection, axis: .vertical)
             .textFieldStyle(.plain)
             .lineLimit(1...7)
             .padding(.horizontal, 3)
@@ -113,9 +134,23 @@ struct ComposerBar: View {
               if sendTypingIndicators && model.canSendInSelectedRoom { model.noteTyping() }
             }
             .disabled(!model.canSendInSelectedRoom)
-            .onSubmit {
+            .submitLabel(enterSendsMessage ? .send : .return)
+            .onKeyPress(.return, phases: .down) { press in
+              if press.modifiers.contains(.command) {
+                submitMessage()
+                return .handled
+              }
+              if press.modifiers.contains(.shift) || !enterSendsMessage {
+                replaceSelection(with: "\n")
+                return .handled
+              }
               if let first = mentionCandidates.first { insertMention(first.username) }
-              else if !sending && !uploading && model.canSendInSelectedRoom && text.utf16.count <= 5000 { onSend() }
+              else { submitMessage() }
+              return .handled
+            }
+            .onSubmit {
+              if enterSendsMessage { submitMessage() }
+              else { replaceSelection(with: "\n") }
             }
 
           Button(action: onSend) {
@@ -136,6 +171,7 @@ struct ComposerBar: View {
     }
     .animation(reduceMotion || reduceInterfaceMotion ? nil : .snappy(duration: 0.2), value: replyingTo?.id)
     .animation(reduceMotion || reduceInterfaceMotion ? nil : .snappy(duration: 0.2), value: mentionCandidates.isEmpty)
+    .onChange(of: model.selectedRoom?.identifier) { _, _ in selection = nil }
     .overlay(alignment: .bottomTrailing) {
       if text.utf16.count > 4500 {
         Text("\(text.utf16.count)/5000").font(.caption2.monospacedDigit())
@@ -176,6 +212,33 @@ struct ComposerBar: View {
 
   private var trimmedText: String {
     text.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private func submitMessage() {
+    guard !trimmedText.isEmpty, !sending, !uploading, model.canSendInSelectedRoom,
+      text.utf16.count <= 5000 else { return }
+    onSend()
+  }
+
+  private var selectedRange: Range<String.Index> {
+    if case .selection(let range) = selection?.indices,
+      range.lowerBound >= text.startIndex, range.upperBound <= text.endIndex,
+      (range.lowerBound == text.endIndex || text.indices.contains(range.lowerBound)),
+      (range.upperBound == text.endIndex || text.indices.contains(range.upperBound)) { return range }
+    return text.endIndex..<text.endIndex
+  }
+
+  private func replaceSelection(with insertion: String) {
+    let range = selectedRange
+    let offset = range.lowerBound.utf16Offset(in: text)
+    text.replaceSubrange(range, with: insertion)
+    let cursor = String.Index(utf16Offset: offset + insertion.utf16.count, in: text)
+    selection = TextSelection(range: cursor..<cursor)
+  }
+
+  private func insertFormat(prefix: String, suffix: String, placeholder: String) {
+    let selected = String(text[selectedRange])
+    replaceSelection(with: prefix + (selected.isEmpty ? placeholder : selected) + suffix)
   }
 
   private func insertMention(_ username: String) {

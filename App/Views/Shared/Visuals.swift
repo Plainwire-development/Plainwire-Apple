@@ -1,16 +1,17 @@
 import SwiftUI
-import ImageIO
 
 #if os(iOS)
   import UIKit
-  typealias PlatformImage = UIImage
 #elseif os(macOS)
   import AppKit
-  typealias PlatformImage = NSImage
 #endif
 
 // Keep preference keys stable across releases.
 enum AppPreferenceKeys {
+  static let serverAddress = "plainwire.apple.serverAddress"
+  static let recentServers = "plainwire.apple.recentServers"
+  static let autoplayAnimatedMedia = "plainwire.apple.autoplayAnimatedMedia"
+  static let enterSendsMessage = "plainwire.apple.enterSendsMessage"
   static let sendTypingIndicators = "plainwire.apple.sendTypingIndicators"
   static let notificationPreviews = "plainwire.apple.notificationPreviews"
   static let notificationSounds = "plainwire.apple.notificationSounds"
@@ -22,6 +23,8 @@ enum AppPreferenceKeys {
 enum AppPreferences {
   static func registerDefaults() {
     UserDefaults.standard.register(defaults: [
+      AppPreferenceKeys.autoplayAnimatedMedia: true,
+      AppPreferenceKeys.enterSendsMessage: true,
       AppPreferenceKeys.sendTypingIndicators: true,
       AppPreferenceKeys.notificationPreviews: true,
       AppPreferenceKeys.notificationSounds: true,
@@ -34,10 +37,13 @@ enum AppPreferences {
 
 struct AppBackdrop: View {
   @Environment(\.colorScheme) private var colorScheme
+  @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
   var body: some View {
     ZStack {
       Color.windowBackground.ignoresSafeArea()
+      #if !os(macOS)
+      if !reduceTransparency {
       RadialGradient(
         colors: [Color.accentColor.opacity(colorScheme == .dark ? 0.13 : 0.10), .clear],
         center: .topTrailing, startRadius: 30, endRadius: 650
@@ -55,6 +61,8 @@ struct AppBackdrop: View {
       .ignoresSafeArea()
       .allowsHitTesting(false)
       .accessibilityHidden(true)
+      }
+      #endif
     }
   }
 }
@@ -126,151 +134,17 @@ struct RemoteAvatar: View {
   }
 }
 
-// An immutable thumbnail safely crosses from the decoding task to the UI.
-private struct DecodedRemoteImage: @unchecked Sendable { let image: CGImage }
-
-enum CachedImagePhase {
-  case empty
-  case success(Image)
-  case failure
-}
-
-struct CachedRemoteImage<Content: View>: View {
-  let url: URL?
-  let pixelSize: Int
-  let content: (CachedImagePhase) -> Content
-  @State private var loadedImage: PlatformImage?
-  @State private var finished = false
-
-  init(url: URL?, pixelSize: Int, @ViewBuilder content: @escaping (CachedImagePhase) -> Content) {
-    self.url = url
-    self.pixelSize = pixelSize
-    self.content = content
-  }
-
-  var body: some View {
-    content(phase)
-      .task(id: "\(url?.absoluteString ?? "")#\(pixelSize)") {
-        loadedImage = nil
-        finished = false
-        guard let url else { finished = true; return }
-        let result = await RemoteImageStore.shared.image(for: url, pixelSize: pixelSize)
-        guard !Task.isCancelled else { return }
-        loadedImage = result
-        finished = true
-      }
-  }
-
-  private var phase: CachedImagePhase {
-    if let loadedImage {
-      #if os(iOS)
-        return .success(Image(uiImage: loadedImage))
-      #else
-        return .success(Image(nsImage: loadedImage))
-      #endif
-    }
-    return finished ? .failure : .empty
-  }
-}
-
-@MainActor
-final class RemoteImageStore {
-  static let shared = RemoteImageStore()
-
-  private let cache = NSCache<NSString, PlatformImage>()
-  private let session: URLSession
-  private let transferDelegate = PlainwireTransferDelegate(
-    configuration: PlainwireConfiguration(), maximumBytes: 32 * 1024 * 1024)
-  private var pending: [String: Task<PlatformImage?, Never>] = [:]
-  private var generation = 0
-
-  private init() {
-    let configuration = URLSessionConfiguration.ephemeral
-    configuration.httpCookieStorage = .shared
-    configuration.timeoutIntervalForRequest = 15
-    configuration.timeoutIntervalForResource = 45
-    configuration.httpMaximumConnectionsPerHost = 4
-    session = URLSession(configuration: configuration, delegate: transferDelegate, delegateQueue: nil)
-    cache.countLimit = 240
-    cache.totalCostLimit = 96 * 1024 * 1024
-  }
-
-  func clear() {
-    generation += 1
-    pending.values.forEach { $0.cancel() }
-    pending.removeAll()
-    cache.removeAllObjects()
-  }
-
-  func image(for url: URL, pixelSize: Int) async -> PlatformImage? {
-    let pixelSize = min(1600, max(64, pixelSize))
-    let key = "\(url.absoluteString)#\(pixelSize)"
-    if let cached = cache.object(forKey: key as NSString) { return cached }
-    if let current = pending[key] {
-      let requestGeneration = generation
-      let result = await current.value
-      return generation == requestGeneration ? result : nil
-    }
-    let requestGeneration = generation
-
-    let task = Task<PlatformImage?, Never> {
-      do {
-        // Download to disk with a transfer limit before decoding; a remote image
-        // must not allocate an unbounded Data buffer on the main actor.
-        let (file, response) = try await transferDelegate.download(URLRequest(url: url), using: session)
-        defer { try? FileManager.default.removeItem(at: file) }
-        let size = (try file.resourceValues(forKeys: [.fileSizeKey])).fileSize ?? 0
-        guard !Task.isCancelled, size > 0, size <= 32 * 1024 * 1024,
-          (response as? HTTPURLResponse)?.statusCode == 200
-        else { return nil }
-        let decoded = await Task.detached(priority: .utility) { () -> DecodedRemoteImage? in
-          let options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceThumbnailMaxPixelSize: pixelSize,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceShouldCacheImmediately: true,
-          ]
-          guard let data = try? Data(contentsOf: file, options: .mappedIfSafe),
-            let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
-            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-            let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue,
-            let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue,
-            width.isFinite, height.isFinite, width > 0, height > 0,
-            width <= 20_000, height <= 20_000, width * height <= 64_000_000,
-            let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
-          else { return nil }
-          return DecodedRemoteImage(image: image)
-        }.value
-        guard !Task.isCancelled, let thumbnail = decoded?.image else { return nil }
-        #if os(iOS)
-          return UIImage(cgImage: thumbnail)
-        #else
-          return NSImage(
-            cgImage: thumbnail,
-            size: NSSize(width: thumbnail.width, height: thumbnail.height))
-        #endif
-      } catch {
-        return nil
-      }
-    }
-    pending[key] = task
-    let result = await task.value
-    guard generation == requestGeneration else { return nil }
-    pending[key] = nil
-    if let result {
-      cache.setObject(result, forKey: key as NSString, cost: pixelSize * pixelSize * 4)
-    }
-    return result
-  }
-}
-
 // Keep glass effects on controls so long message lists stay light.
 struct AdaptiveGlassModifier: ViewModifier {
+  @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
   let cornerRadius: CGFloat
   let interactive: Bool
 
   @ViewBuilder func body(content: Content) -> some View {
-    if #available(iOS 26.0, macOS 26.0, *) {
+    if reduceTransparency {
+      content.background(Color.windowBackground, in: RoundedRectangle(cornerRadius: cornerRadius))
+        .overlay { RoundedRectangle(cornerRadius: cornerRadius).stroke(.primary.opacity(0.15), lineWidth: 1) }
+    } else if #available(iOS 26.0, macOS 26.0, *) {
       content.glassEffect(
         interactive ? .regular.interactive() : .regular,
         in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))

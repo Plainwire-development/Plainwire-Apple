@@ -29,6 +29,10 @@ struct ConversationListView: View {
         ForEach(filteredConversations) { conversation in
           conversationDestination(conversation)
             .contextMenu {
+              Button(model.isConversationMuted(conversation) ? "Unmute on This Device" : "Mute on This Device",
+                systemImage: model.isConversationMuted(conversation) ? "bell" : "bell.slash") {
+                model.setConversationMuted(conversation, muted: !model.isConversationMuted(conversation))
+              }
               Button("Mark Read", systemImage: "checkmark") {
                 Task { await model.readConversation(conversation) }
               }
@@ -156,7 +160,7 @@ private struct ConversationRow: View {
           if model.drafts["direct:\(conversation.id)"]?.isEmpty == false {
             Text("Draft").font(.caption2.weight(.medium)).foregroundStyle(.orange)
           }
-          if conversation.muted { Image(systemName: "bell.slash").font(.caption2).foregroundStyle(.secondary) }
+          if model.isConversationMuted(conversation) { Image(systemName: "bell.slash").font(.caption2).foregroundStyle(.secondary) }
           if conversation.unread > 0 {
             Text("\(conversation.unread)")
               .font(.caption2.bold())

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.2.0
+
+- Render animated GIF/APNG avatars, banners, and chat images with background frame decoding, bounded shared caches, and native layer playback. Pause animation offscreen, when inactive, and with Reduce Motion or autoplay disabled.
+- Add persistent server-host switching with recent hosts, HTTPS domains/custom ports, local HTTP, rebuilt API/realtime/WebRTC/web tools, and host-aware media, invites, activity, and conversation links.
+- Isolate drafts and device mute preferences by full deployment URL and account; clear old host cookies, private media, navigation, and calls when switching. Reject stale session responses and sign-in during host transitions.
+- Use native Mac Settings tabs/grouped forms, system sidebar selection, a quick status menu, quieter chat backgrounds, Reduce Transparency support, and stable message-row comparisons.
+- Add a native paginated GIF picker using the selected host’s provider API, Markdown formatting tools, image URL editing, status choices, Enter-to-send preferences, animation autoplay, clear drafts, and device-local conversation muting.
+- Add host-validation/authentication regressions and optimized native smoke coverage for GIF playback and two independent databases sharing one hostname on different ports.
+
 ## 2.1.2
 
 - Replaced the call panel’s crashing SwiftUI GestureState callbacks with native AppKit mouse and UIKit pan handlers. Pointer movement uses window coordinates and a fixed anchor to prevent drift; direct manipulation disables layout animation.

@@ -1,6 +1,6 @@
 # Plainwire for Apple
 
-Plainwire is a chat app for Mac, iPhone, and iPad. This is its SwiftUI client. It connects to the same account and messages as [plainwi.re](https://plainwi.re).
+Plainwire is a chat app for Mac, iPhone, and iPad. This is its SwiftUI client. It connects to [plainwi.re](https://plainwi.re) or your own self-hosted Plainwire installation.
 
 ## Install on Mac
 
@@ -36,13 +36,19 @@ curl -fsSL https://github.com/Plainwire-development/Plainwire-Apple/releases/lat
 
 The updater skips versions already installed, verifies the archive and swap helper against the release SHA-256 list, checks the app signature and version, then swaps the staged app with the installed one in a single filesystem operation. If verification or the swap fails, the installed app stays in place. It closes and reopens Plainwire when needed. Add `--no-open` with `bash -s -- --no-open` to leave it closed, or run `./scripts/update-macos.sh --release 1.2.0` from this checkout to select a release.
 
+## Connect to a self-hosted server
+
+Choose **Switch Server Host…** on the sign-in screen or in **Settings → Connection**. It is also available from the Mac app and account menus, including when a saved host is unreachable. Enter the installation URL, for example `https://chat.example.com` or `https://chat.example.com:8443`. Local installations can use HTTP with localhost, a private IPv4 address, or a `.local` hostname. API reverse-proxy paths are preserved.
+
+The host persists after relaunch. Switching ends calls and signs out of the previous host; sign in with an account on the new installation. Drafts are saved separately by deployment and account and restore when you return. Private media, notifications, and room state are cleared. Message links, invites, calls, and authenticated web tools use the selected host.
+
 ## Run on iPhone or iPad
 
 Open `Plainwire.xcodeproj` in Xcode, select the `Plainwire` scheme, choose a simulator or device, and press Run. The app requires iOS or iPadOS 18 or later. A physical device needs your own Apple signing team in Xcode.
 
 ## What it does
 
-This checkout is version **2.1.2**. On Mac, open Settings with **⌘,** or Plainwire → Settings; settings no longer occupy the sidebar. iPhone and iPad retain the You entry. Settings use native SwiftUI switches, which adopt Liquid Glass on supported systems and the standard appearance on older systems. Option (⌥)-scroll seeks inline videos when enabled in Settings → Chat. See [the changelog](CHANGELOG.md) and [2.1.2 release notes](RELEASE_NOTES_2.1.2.md).
+This checkout is version **2.2.0**. A native GIF search picker and formatting tools join the composer. Animated GIF avatars, banners, and message images play natively and pause with Reduce Motion or the autoplay preference. Mac Settings uses native tabs and grouped forms, with chat controls for Enter-to-send, local drafts, and media animation. On Mac, open Settings with **⌘,** or Plainwire → Settings; settings no longer occupy the sidebar. iPhone and iPad retain the You entry. Settings use native SwiftUI switches, which adopt Liquid Glass on supported systems and the standard appearance on older systems. Option (⌥)-scroll seeks inline videos when enabled in Settings → Chat. See [the changelog](CHANGELOG.md) and [2.2.0 release notes](RELEASE_NOTES_2.2.0.md).
 
 Plainwire supports direct and group messages, channels, friends, reactions, replies, forwarding, pins, message search, message requests, an activity inbox, file uploads, attachment previews, voice-note recording and playback, spoiler text and attachments, inline video, and live presence. Room drafts survive navigation and relaunch and are cleared when you sign out. You can view other members' profiles, edit your own profile and images, manage account credentials and sessions, and create, join, and customize servers. Group controls include names, members, moderators, and leaving or closing a conversation. Server controls include appearance, your server profile, channels, slow mode, categories, members, and invite links. Images are cached and resized for the screen. On Mac and iPad, conversations use a wider split view; iPhone uses tabs.
 

@@ -756,6 +756,23 @@ private extension KeyedDecodingContainer {
   }
 }
 
+public struct PWGIFSearch: Decodable, Sendable {
+  public let results: [PWGIF]
+  public let next: String
+  public let provider: String
+}
+
+public struct PWGIF: Decodable, Hashable, Identifiable, Sendable {
+  public let id: String
+  public let title: String
+  public let url: String
+  public let previewURL: String?
+  enum CodingKeys: String, CodingKey {
+    case id, title, url
+    case previewURL = "preview_url"
+  }
+}
+
 public struct PWMessageSearch: Decodable, Sendable {
   public let messages: [PWMessage]
   public let query: String

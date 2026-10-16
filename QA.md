@@ -115,3 +115,15 @@ For the presence fix, disconnect the second account and verify that Friends, pro
 - Choose Move call here; verify the website relinquishes audio, no participant is rung again, mute/deafen survive, and native media connects. Move it back to the website and verify native capture stops and the other-client panel returns.
 - Deny microphone permission during transfer or fail relay loading before joining. Confirm the website call survives and the native app presents the error. End the website call and confirm the panel disappears.
 - On iPhone/iPad, move and resize using the native pan handles; rotate during an interaction and verify controls remain reachable.
+
+## 2.2 animated media, hosts, and native preferences
+
+- Run `./scripts/verify-calling.sh`; it also generates animated GIF fixtures and runs the full model against two localhost installations on different ports. The test executable is wrapped in a temporary app bundle for macOS notification APIs.
+- Search GIFs with the composer button and ⌘G, paginate, change queries during a request, select a result, and send it. Verify the original draft/room, Markdown-safe titles, animation, and the friendly error on a server without a configured provider. Exercise formatting helpers.
+- On Mac, iPhone, and iPad, view GIF avatars/banners from uploads and URLs in messages, Friends, member profiles, server headers, and profile editing. Check animation timing, aspect fill/cropping, static images, slow/broken media, spoilers, and repeated avatars.
+- Scroll animated images offscreen and back, switch apps, toggle system Reduce Motion, and toggle autoplay/interface motion in Settings. Check animation pauses, resumes, and does not cause scrolling stalls. Toggle Reduce Transparency and check solid, readable controls.
+- Choose a custom host from sign-in, loading/recovery, Mac menus, and Settings. Restart and verify it persists. Try malformed URLs, credentials/query strings, HTTPS domains, custom ports, local HTTP, and an API deployment path.
+- Switch between two independent databases with identical user/room IDs, including two ports on one hostname. Check that cookies, rooms, profiles, presence, calls, web tools, media, notifications, drafts, and device mute preferences never cross hosts. Return and sign in to restore that host's drafts. Explicit sign-out should clear drafts.
+- Follow an invite, copy a conversation link, open Activity, and use Forums/Source Hub on the custom host. Confirm generated links and authenticated tools use that installation. Try switching while restoring a slow session and during uploads/profile requests.
+- Check Mac Settings tabs at the minimum window size, system sidebar selection with keyboard/VoiceOver, quick status, URL/file GIF editing, device-local mute, clear drafts, and both Return preferences. Verify Shift-Return inserts a line and Command-Return sends. Test iPhone software-keyboard Return too.
+- Repeat calling checks on real devices and between the web/native clients. Production self-hosted TLS/proxy configuration and background iOS call/push delivery still require separate hands-on validation.

@@ -1,12 +1,18 @@
 import SwiftUI
 import AVFoundation
 
-struct MessageRow: View {
+struct MessageRow: View, Equatable {
   @Environment(AppModel.self) private var model
   @AppStorage(AppPreferenceKeys.compactMessages) private var compactMessages = false
   @State private var showingProfile = false
   @State private var hovering = false
   let presentation: AppModel.MessagePresentation
+
+  nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.presentation.message == rhs.presentation.message
+      && lhs.presentation.startsGroup == rhs.presentation.startsGroup
+      && lhs.presentation.dateHeader == rhs.presentation.dateHeader
+  }
 
   private var message: PWMessage { presentation.message }
 

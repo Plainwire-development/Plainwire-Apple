@@ -8,7 +8,7 @@ struct ActivityView: View {
   var body: some View {
     List(model.notifications) { notification in
       Button {
-        guard let url = URL(string: notification.url, relativeTo: PlainwireConfiguration().baseURL) else { return }
+        guard let url = URL(string: notification.url, relativeTo: model.appURL()) else { return }
         Task { await model.handleDeepLink(url.absoluteURL) }
       } label: {
         HStack(alignment: .top, spacing: 12) {

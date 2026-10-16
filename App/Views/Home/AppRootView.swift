@@ -41,7 +41,7 @@ struct AppRootView: View {
     }
     .quickLookPreview(Binding(get: { model.previewFileURL }, set: { model.previewFileURL = $0 }))
     .environment(\.openURL, OpenURLAction { url in
-      if url.scheme == "plainwire" || (url.host == PlainwireConfiguration().baseURL.host && url.fragment != nil) {
+      if url.scheme == "plainwire" || (model.isServerURL(url) && url.fragment != nil) {
         Task { await model.handleDeepLink(url) }
         return .handled
       }
@@ -49,6 +49,9 @@ struct AppRootView: View {
       return .systemAction
     })
     .preferredColorScheme(preferredColorScheme)
+    .sheet(isPresented: Binding(get: { model.showServerPicker }, set: { model.showServerPicker = $0 })) {
+      ServerHostSheet()
+    }
     .sheet(isPresented: Binding(get: { model.showMessageSearch }, set: { model.showMessageSearch = $0 })) {
       MessageSearchView()
     }
@@ -137,10 +140,14 @@ private struct AppNoticeBanner: View {
 }
 
 private struct LaunchView: View {
+  @Environment(AppModel.self) private var model
   var body: some View {
     VStack(spacing: 18) {
       PlainwireMark(size: 72)
       ProgressView().controlSize(.large)
+      Text(model.serverDisplayName).font(.callout).foregroundStyle(.secondary)
+      Button("Switch Server Host…") { model.showServerPicker = true }
+        .buttonStyle(.borderless).disabled(model.isBusy || model.isSwitchingHost)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(AppBackdrop())
@@ -266,12 +273,14 @@ private struct ConnectionRecoveryView: View {
     ContentUnavailableView {
       Label("Unable to connect", systemImage: "wifi.exclamationmark")
     } description: {
-      Text("Your saved session is still here. Check your connection and try again.")
+      Text("Couldn’t reach \(model.serverDisplayName). Check your connection or choose another server host.")
     } actions: {
       Button("Try Again") { Task { await model.retryStart() } }
         .buttonStyle(.borderedProminent)
       Button("Sign Out", role: .destructive) { Task { await model.logout() } }
         .buttonStyle(.bordered)
+      Button("Switch Server Host") { model.showServerPicker = true }
+        .buttonStyle(.bordered).disabled(model.isBusy)
     }
     .background(AppBackdrop())
   }

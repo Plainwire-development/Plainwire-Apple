@@ -30,6 +30,8 @@ struct PlainwireApp: App {
         CommandGroup(after: .appInfo) {
           Button("Refresh Plainwire") { Task { await model.refresh() } }
             .keyboardShortcut("r", modifiers: .command)
+          Button("Switch Server Host…") { model.showServerPicker = true }
+            .disabled(model.isBusy || model.isSwitchingHost)
         }
         CommandMenu("Plainwire") {
           Button("Messages") { model.selectedSection = .messages }
@@ -52,7 +54,7 @@ struct PlainwireApp: App {
       }
       Settings {
         SettingsView(showNavigationTitle: false, detailPresentation: true).environment(model).frame(
-          minWidth: 760, minHeight: 620)
+          minWidth: 640, minHeight: 520)
       }
     #else
       WindowGroup { rootView }

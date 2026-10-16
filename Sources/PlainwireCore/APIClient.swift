@@ -43,6 +43,21 @@ public actor PlainwireAPIClient {
 
   public func currentCSRFToken() -> String? { csrfToken }
 
+  /// Abandon work belonging to a deployment that is no longer active.
+  public func invalidate() {
+    authenticationGeneration += 1
+    csrfToken = nil
+    session.invalidateAndCancel()
+    // Cookies are scoped to domains, not ports. Switching installations on one
+    // hostname must never send the previous database's session to the new port.
+    for cookie in HTTPCookieStorage.shared.cookies ?? [] where cookie.name == "pw_session" {
+      let domain = cookie.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".")).lowercased()
+      if let host = configuration.baseURL.host?.lowercased(), host == domain || host.hasSuffix("." + domain) {
+        HTTPCookieStorage.shared.deleteCookie(cookie)
+      }
+    }
+  }
+
   public func rtcConfiguration() async throws -> JSONValue {
     try await get("rtc-config")
   }
@@ -114,6 +129,16 @@ public actor PlainwireAPIClient {
   }
   public func profile(id: PlainwireID) async throws -> PWProfile {
     try await get("profile/\(id)")
+  }
+
+  public func searchGIFs(_ query: String, position: String? = nil) async throws -> PWGIFSearch {
+    var items = [URLQueryItem(name: "q", value: String(query.prefix(120)))]
+    if let position, !position.isEmpty { items.append(URLQueryItem(name: "pos", value: position)) }
+    return try await get("gifs/search", query: items)
+  }
+
+  public func registerGIFShare(id: String, query: String) async throws {
+    let _: JSONValue = try await request(method: "POST", path: "gifs/share", body: ["id": id, "q": query])
   }
   public func updateProfile(
     displayName: String, bio: String, status: String, avatarURL: String,

@@ -64,6 +64,7 @@ import Observation
     pointer.cancelOperation(nil)
     try check(fixture.layout == beforeCancel && fixture.interaction == nil, "Cancelling failed to restore the drag anchor")
     try await verifyCallDock()
+    try await MediaAndHostsSmoke.run()
     print("Call panel smoke passed: optimized SwiftUI hosting, 300 move events, 60 resize events, release, and cancellation.")
   }
 

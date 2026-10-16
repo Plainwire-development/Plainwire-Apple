@@ -25,7 +25,7 @@ final class AppModel {
 
   typealias MessageAttachment = PWAttachment
 
-  struct MessagePresentation: Identifiable {
+  struct MessagePresentation: Identifiable, Sendable {
     let message: PWMessage
     let startsGroup: Bool
     let dateHeader: String?
@@ -37,7 +37,7 @@ final class AppModel {
     var id: PlainwireID { message.id }
   }
 
-  struct MessageTextBlock: Identifiable {
+  struct MessageTextBlock: Identifiable, Sendable {
     let id: Int
     let block: PWTextBlock
     let markdown: AttributedString
@@ -63,9 +63,9 @@ final class AppModel {
     }
   }
 
-  private let config = PlainwireConfiguration()
-  private let api: PlainwireAPIClient
-  private let realtime: PlainwireRealtimeClient
+  private var config: PlainwireConfiguration
+  @ObservationIgnored private var api: PlainwireAPIClient
+  @ObservationIgnored private var realtime: PlainwireRealtimeClient
   private var eventTask: Task<Void, Never>?
   private var refreshTask: Task<Void, Never>?
   private var realtimeWork: [String: Task<Void, Never>] = [:]
@@ -89,6 +89,7 @@ final class AppModel {
   private var pendingDeepLink: URL?
   private var draftSaveTask: Task<Void, Never>?
   var drafts: [String: String] = [:] { didSet { scheduleDraftSave() } }
+  private var conversationMuteOverrides: [String: Bool] = [:]
   var notifications: [PWNotification] = []
   var previewFileURL: URL?
   var downloadingAttachment = false
@@ -100,9 +101,11 @@ final class AppModel {
   var navigationRoom: Room?
   var messageJumpID: PlainwireID?
   var contextRooms = Set<String>()
-  var workspace = WorkspaceController()
+  var workspace: WorkspaceController
   var showWorkspace = false
   var showSettings = false
+  var showServerPicker = false
+  private(set) var isSwitchingHost = false
   var calls = CallController()
   var unreadActivityCount: Int { notifications.filter { !$0.seen }.count }
   var unreadMessageCount: Int { conversations.reduce(0) { $0 + max(0, $1.unread) } }
@@ -137,9 +140,19 @@ final class AppModel {
   private var presence = PWPresence()
   private var profilePresenceWatches: [UUID: PlainwireID] = [:]
 
-  init() {
+  init(configuration: PlainwireConfiguration? = nil) {
+    let config = configuration ?? (try? PlainwireConfiguration(
+      serverAddress: UserDefaults.standard.string(forKey: AppPreferenceKeys.serverAddress) ?? ""))
+      ?? PlainwireConfiguration()
+    self.config = config
     api = PlainwireAPIClient(configuration: config)
     realtime = PlainwireRealtimeClient(configuration: config)
+    workspace = WorkspaceController(configuration: config)
+    RemoteImageStore.shared.configure(config)
+    configureCalling()
+  }
+
+  private func configureCalling() {
     calls.send = { [weak self] payload in
       guard let self, self.sessionState == .ready else { return }
       try await self.realtime.send(payload)
@@ -148,7 +161,100 @@ final class AppModel {
   }
 
   private var draftStorageKey: String? {
-    session.map { "plainwire.apple.drafts.\(config.baseURL.host ?? "plainwire").\($0.user.id)" }
+    session.map { "plainwire.apple.drafts.\(config.storageIdentifier).\($0.user.id)" }
+  }
+
+  var serverURL: URL { config.baseURL }
+  var serverAddress: String { config.baseURL.absoluteString }
+  var serverDisplayName: String {
+    serverAddress.replacingOccurrences(of: "https://", with: "")
+      .replacingOccurrences(of: "http://", with: "")
+  }
+  func appURL(fragment: String? = nil) -> URL { config.appURL(fragment: fragment) }
+  func isServerURL(_ url: URL) -> Bool { config.isAppURL(url) }
+
+  @discardableResult
+  func switchServer(to address: String) async -> Bool {
+    guard !isBusy, !isSwitchingHost else { return false }
+    do {
+      let next = try PlainwireConfiguration(serverAddress: address)
+      guard next != config else { return true }
+      isSwitchingHost = true
+      defer { isSwitchingHost = false }
+      await logout(preservingDrafts: true)
+      await api.invalidate()
+      config = next
+      api = PlainwireAPIClient(configuration: next)
+      realtime = PlainwireRealtimeClient(configuration: next)
+      workspace = WorkspaceController(configuration: next)
+      RemoteImageStore.shared.configure(next)
+      configureCalling()
+      pendingDeepLink = nil
+      refreshing = false
+      realtimeState = .stopped
+      UserDefaults.standard.set(next.baseURL.absoluteString, forKey: AppPreferenceKeys.serverAddress)
+      var recent = UserDefaults.standard.stringArray(forKey: AppPreferenceKeys.recentServers) ?? []
+      recent.removeAll { $0 == next.baseURL.absoluteString }
+      recent.insert(next.baseURL.absoluteString, at: 0)
+      UserDefaults.standard.set(Array(recent.prefix(8)), forKey: AppPreferenceKeys.recentServers)
+      sessionState = .booting
+      await start()
+      return true
+    } catch {
+      errorMessage = error.localizedDescription
+      return false
+    }
+  }
+
+  func clearDrafts() {
+    drafts = [:]
+    flushDrafts()
+  }
+
+  func searchGIFs(_ query: String, position: String? = nil) async throws -> PWGIFSearch {
+    let generation = sessionGeneration
+    let result = try await api.searchGIFs(query, position: position)
+    guard generation == sessionGeneration, !Task.isCancelled else { throw CancellationError() }
+    return result
+  }
+
+  func insertGIF(_ gif: PWGIF, query: String, room: Room) -> Bool {
+    guard sessionState == .ready, let url = mediaURL(gif.url) else { return false }
+    let name = ["\\", "[", "]", "(", ")", "\n", "\r", "|"].reduce(String(gif.title.prefix(80))) {
+      $0.replacingOccurrences(of: $1, with: "_")
+    }
+    let address = url.absoluteString.replacingOccurrences(of: "(", with: "%28")
+      .replacingOccurrences(of: ")", with: "%29")
+    let attachment = "![\(name.isEmpty ? "GIF" : name)](\(address))"
+    let current = drafts[room.identifier] ?? ""
+    guard current.utf16.count + attachment.utf16.count + 1 <= 5000 else {
+      errorMessage = "This GIF would exceed the 5,000-character message limit."
+      return false
+    }
+    drafts[room.identifier] = current.isEmpty ? attachment : current + "\n" + attachment
+    let client = api
+    Task { try? await client.registerGIFShare(id: gif.id, query: query) }
+    return true
+  }
+
+  func setStatus(_ status: String) async {
+    guard let user = session?.user else { return }
+    _ = await saveProfile(displayName: user.displayName, bio: user.bio, status: status,
+      avatarURL: user.avatarURL, bannerURL: user.bannerURL, theme: user.theme)
+  }
+
+  func isConversationMuted(_ conversation: PWConversation) -> Bool {
+    conversationMuteOverrides[String(conversation.id)] ?? conversation.muted
+  }
+
+  func setConversationMuted(_ conversation: PWConversation, muted: Bool) {
+    guard let key = accountPreferenceKey("mutedConversations") else { return }
+    conversationMuteOverrides[String(conversation.id)] = muted
+    UserDefaults.standard.set(conversationMuteOverrides, forKey: key)
+  }
+
+  private func accountPreferenceKey(_ name: String) -> String? {
+    session.map { "plainwire.apple.\(name).\(config.storageIdentifier).\($0.user.id)" }
   }
 
   private func scheduleDraftSave() {
@@ -170,13 +276,17 @@ final class AppModel {
 
   func start() async {
     guard sessionState == .booting else { return }
+    let generation = sessionGeneration
     do {
       let restored = try await api.restoreSession()
+      guard generation == sessionGeneration, !Task.isCancelled else { return }
       session = restored
       await finishSignIn()
     } catch PlainwireAPIError.notAuthenticated {
+      guard generation == sessionGeneration else { return }
       sessionState = .signedOut
     } catch {
+      guard generation == sessionGeneration, !Task.isCancelled else { return }
       errorMessage = error.localizedDescription
       sessionState = .unavailable
     }
@@ -191,9 +301,24 @@ final class AppModel {
   private func finishSignIn() async {
     sessionGeneration += 1
     let generation = sessionGeneration
-    if let key = draftStorageKey { drafts = UserDefaults.standard.dictionary(forKey: key) as? [String: String] ?? [:] }
+    if let key = accountPreferenceKey("mutedConversations") {
+      conversationMuteOverrides = UserDefaults.standard.dictionary(forKey: key) as? [String: Bool] ?? [:]
+    }
+    if let key = draftStorageKey, let userID = session?.user.id {
+      let legacyKey = "plainwire.apple.drafts.\(config.baseURL.host ?? "plainwire").\(userID)"
+      // Migrate the old default-host key without mixing ports or deployments.
+      if config == PlainwireConfiguration(), UserDefaults.standard.object(forKey: key) == nil,
+        let legacy = UserDefaults.standard.dictionary(forKey: legacyKey) {
+        UserDefaults.standard.set(legacy, forKey: key)
+        UserDefaults.standard.removeObject(forKey: legacyKey)
+      }
+      drafts = UserDefaults.standard.dictionary(forKey: key) as? [String: String] ?? [:]
+    }
     do { try await bootstrap() }
-    catch PlainwireAPIError.notAuthenticated { await logout(); return }
+    catch PlainwireAPIError.notAuthenticated {
+      if generation == sessionGeneration { await logout() }
+      return
+    }
     catch { if generation == sessionGeneration { errorMessage = error.localizedDescription } }
     guard generation == sessionGeneration, session != nil else { return }
     // An unavailable panel must not discard a valid authenticated session.
@@ -209,40 +334,49 @@ final class AppModel {
   func login(username: String, password: String) async -> Bool {
     guard !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !password.isEmpty
     else { return false }
-    guard !isBusy else { return false }
+    guard !isBusy, !isSwitchingHost else { return false }
+    let generation = sessionGeneration
     isBusy = true
-    defer { isBusy = false }
+    defer { if generation == sessionGeneration || sessionState == .ready { isBusy = false } }
     do {
-      session = try await api.login(
+      let result = try await api.login(
         username: username.trimmingCharacters(in: .whitespacesAndNewlines), password: password)
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
+      session = result
       await finishSignIn()
       return true
     } catch {
-      errorMessage = error.localizedDescription
+      if generation == sessionGeneration { errorMessage = error.localizedDescription }
       return false
     }
   }
 
   func register(username: String, displayName: String, password: String) async -> Bool {
-    guard !isBusy else { return false }
+    guard !isBusy, !isSwitchingHost else { return false }
+    let generation = sessionGeneration
     isBusy = true
-    defer { isBusy = false }
+    defer { if generation == sessionGeneration || sessionState == .ready { isBusy = false } }
     do {
-      session = try await api.register(
+      let result = try await api.register(
         username: username.trimmingCharacters(in: .whitespacesAndNewlines),
         displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines), password: password
       )
+      guard generation == sessionGeneration, !Task.isCancelled else { return false }
+      session = result
       await finishSignIn()
       return true
     } catch {
-      errorMessage = error.localizedDescription
+      if generation == sessionGeneration { errorMessage = error.localizedDescription }
       return false
     }
   }
 
-  func logout() async {
+  func logout(preservingDrafts: Bool = false) async {
     guard !signingOut, sessionState != .signedOut || session != nil else { return }
     signingOut = true
+    if preservingDrafts { flushDrafts() }
+    sessionGeneration += 1
+    isBusy = true
     await calls.end()
     calls.reset()
     showWorkspace = false
@@ -250,13 +384,14 @@ final class AppModel {
     sessionState = .signedOut
     isBusy = true
     defer { isBusy = false; signingOut = false }
-    sessionGeneration += 1
-    let signOut = Task { try? await api.logout() }
+    let oldAPI = api
+    let signOut = Task { try? await oldAPI.logout() }
     draftSaveTask?.cancel()
     draftSaveTask = nil
-    if let key = draftStorageKey { UserDefaults.standard.removeObject(forKey: key) }
+    if !preservingDrafts, let key = draftStorageKey { UserDefaults.standard.removeObject(forKey: key) }
     refreshTask?.cancel()
     refreshTask = nil
+    refreshing = false
     realtimeWork.values.forEach { $0.cancel() }
     realtimeWork.removeAll()
     typingStopTask?.cancel()
@@ -278,6 +413,7 @@ final class AppModel {
     readingConversations = []
     readingRoomID = nil
     drafts = [:]
+    conversationMuteOverrides = [:]
     draftSaveTask?.cancel()
     draftSaveTask = nil
     notifications = []
@@ -328,7 +464,7 @@ final class AppModel {
     guard sessionState == .ready, !refreshing else { return }
     refreshing = true
     let generation = sessionGeneration
-    defer { refreshing = false }
+    defer { if generation == sessionGeneration { refreshing = false } }
     do {
       let restored = try await api.restoreSession()
       guard generation == sessionGeneration else { return }
@@ -1290,7 +1426,7 @@ final class AppModel {
     if url.scheme == "plainwire" {
       let all = [host].compactMap { $0 } + components
       await routeDeepLink(parts: all)
-    } else if url.host == config.baseURL.host {
+    } else if config.isAppURL(url) {
       await routeDeepLink(parts: components)
     }
   }
@@ -1620,7 +1756,7 @@ final class AppModel {
     if message.scope == "channel" && !isMention { return }
     let conversation = message.scope == "direct"
       ? conversations.first(where: { $0.id == message.scopeId }) : nil
-    if conversation?.muted == true { return }
+    if let conversation, isConversationMuted(conversation) { return }
     let title = message.scope == "direct"
       ? conversation.map(conversationDisplayName)
       : serverDetails.values

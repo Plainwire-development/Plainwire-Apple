@@ -57,21 +57,30 @@ struct SignInView: View {
               .padding(.vertical, 5)
             }
             .adaptiveGlassButton(prominent: true).controlSize(.large).disabled(
-              model.isBusy || username.isEmpty || password.isEmpty)
+              model.isBusy || model.isSwitchingHost || username.isEmpty || password.isEmpty)
           }
           .padding(24)
           .adaptiveGlass(cornerRadius: 28)
           .frame(maxWidth: 440)
+          Button { model.showServerPicker = true } label: {
+            Label(model.serverDisplayName, systemImage: "network")
+              .font(.callout).lineLimit(1).truncationMode(.middle)
+          }
+          .buttonStyle(.borderless)
+          .help("Switch server host")
+          .accessibilityLabel("Switch server host. Current host: \(model.serverDisplayName)")
+          .disabled(model.isBusy || model.isSwitchingHost)
         }
         .padding(.horizontal, 24).padding(.vertical, 54)
         .frame(maxWidth: .infinity)
       }
     }
     .onAppear { focus = .username }
+    .onChange(of: model.serverAddress) { _, _ in password = ""; username = ""; displayName = "" }
   }
 
   private func submit() {
-    guard !model.isBusy else { return }
+    guard !model.isBusy, !model.isSwitchingHost else { return }
     Task {
       if mode == .signIn {
         _ = await model.login(username: username, password: password)

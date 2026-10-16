@@ -674,10 +674,8 @@ private struct ServerManagementSheet: View {
             }
           }
           Spacer(minLength: 4)
-          if let url = URL(string: "https://plainwi.re/#wire/\(invite.code)") {
-            ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
-              .accessibilityLabel("Share invite")
-          }
+          ShareLink(item: model.appURL(fragment: "wire/\(invite.code)")) { Image(systemName: "square.and.arrow.up") }
+            .accessibilityLabel("Share invite")
           if canManageInvites {
             Button(role: .destructive) { Task { await revoke(invite) } } label: {
               Image(systemName: "trash")

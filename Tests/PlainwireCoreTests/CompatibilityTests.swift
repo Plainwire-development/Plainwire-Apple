@@ -157,6 +157,41 @@ private func withFixture<T: Sendable>(
 
 private let fixtureSession = #"{"ok":true,"data":{"user":{"id":4,"username":"alice"},"csrf":"fixture-csrf","server_time":9}}"#
 
+@Test func abandoningAHostInvalidatesItsAuthentication() async throws {
+  try await withFixture({ _ in (200, fixtureSession) }) { client in
+    _ = try await client.restoreSession()
+    #expect(await client.currentCSRFToken() == "fixture-csrf")
+    await client.invalidate()
+    #expect(await client.currentCSRFToken() == nil)
+    await #expect(throws: PlainwireAPIError.notAuthenticated) {
+      try await client.markConversationRead(42)
+    }
+  }
+}
+
+@Test func gifSearchAndShareMatchTheReferenceServerProtocol() async throws {
+  try await withFixture({ request in
+    if request.url?.path == "/api/me" { return (200, fixtureSession) }
+    if request.url?.path == "/api/gifs/search" {
+      let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
+      #expect(query?.first(where: { $0.name == "q" })?.value == "hello & 🎉")
+      #expect(query?.first(where: { $0.name == "pos" })?.value == "next/page+")
+      return (200, #"{"ok":true,"data":{"provider":"KLIPY","next":"page-2","results":[{"id":"gif-1","title":"Celebrate","url":"https://cdn.example/full.gif","preview_url":"https://cdn.example/tiny.gif","width":240,"height":120}]}}"#)
+    }
+    #expect(request.url?.path == "/api/gifs/share")
+    #expect(request.httpMethod == "POST")
+    #expect(request.value(forHTTPHeaderField: "X-CSRF-Token") == "fixture-csrf")
+    return (200, #"{"ok":true}"#)
+  }) { client in
+    _ = try await client.restoreSession()
+    let page = try await client.searchGIFs("hello & 🎉", position: "next/page+")
+    #expect(page.results.first?.id == "gif-1")
+    #expect(page.results.first?.previewURL == "https://cdn.example/tiny.gif")
+    #expect(page.next == "page-2")
+    try await client.registerGIFShare(id: "gif-1", query: "hello & 🎉")
+  }
+}
+
 @Test func successfulCommandsWithoutDataAreAcceptedAndCSRFIsSent() async throws {
   try await withFixture({ request in
     if request.url?.path == "/api/me" { return (200, fixtureSession) }
