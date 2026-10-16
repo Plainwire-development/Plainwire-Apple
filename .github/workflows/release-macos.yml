@@ -115,10 +115,33 @@ jobs:
         if: steps.assets.outputs.needed == 'true'
         run: |
           ./scripts/verify.sh
-          ./scripts/verify-calling.sh
+          # A terminal keeps Swift smoke-test output line-buffered, so a native
+          # trap cannot discard the check name or assertion from the log.
+          # macOS script propagates the child command's exit status.
+          script -q /dev/null ./scripts/verify-calling.sh
           xcodebuild -quiet -project Plainwire.xcodeproj -scheme Plainwire \
             -configuration Debug -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO build
+
+      - name: Report native crash details
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          reports = Path.home() / "Library/Logs/DiagnosticReports"
+          for path in sorted(reports.glob("PlainwireSmoke*"))[-3:]:
+              print(f"Native crash report: {path.name}", flush=True)
+              content = path.read_text(errors="replace")
+              try:
+                  report = json.loads(content.split("\n", 1)[1])
+                  detail = {key: report[key] for key in ("exception", "termination", "asi", "lastExceptionBacktrace") if key in report}
+                  detail["triggeredThreads"] = [thread for thread in report.get("threads", []) if thread.get("triggered")]
+                  detail["usedImages"] = report.get("usedImages", [])
+                  print(json.dumps(detail, indent=2)[:60000], flush=True)
+              except (ValueError, IndexError):
+                  print(content[:60000], flush=True)
+          PY
 
       - name: Build universal Mac archive
         if: steps.assets.outputs.needed == 'true'
