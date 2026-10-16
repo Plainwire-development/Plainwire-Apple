@@ -188,7 +188,6 @@ struct ChatView: View {
               if canShowInlineMembers { withAnimation(shouldAnimate ? .smooth(duration: 0.22) : nil) { showsMembers.toggle() } }
               else { showsMemberSheet = true }
             })
-          Divider().opacity(0.32)
         }
 
         if let room = model.selectedRoom, model.contextRooms.contains(room.identifier) {
@@ -196,7 +195,7 @@ struct ChatView: View {
             Label("Viewing message history", systemImage: "clock.arrow.circlepath").font(.caption)
             Spacer()
             Button("Back to Latest") { Task { await model.returnToLive() } }.font(.caption.weight(.semibold))
-          }.padding(12).background(.bar)
+          }.padding(12).background(.bar, ignoresSafeAreaEdges: [])
         }
         if let room = model.selectedRoom, room.scope == "direct",
           let conversation = model.conversations.first(where: { $0.id == room.roomID }),
@@ -207,7 +206,7 @@ struct ChatView: View {
             Button("Accept") { Task { _ = await model.conversationAction(conversation, action: .accept) } }
               .buttonStyle(.borderedProminent)
             Button("Decline", role: .destructive) { Task { _ = await model.conversationAction(conversation, action: .deny) } }
-          }.padding(12).background(.bar)
+          }.padding(12).background(.bar, ignoresSafeAreaEdges: [])
         }
         messages
 
@@ -236,6 +235,7 @@ struct ChatView: View {
         .padding(.bottom, 10)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .clipped()
   }
 
   private var hasRoomMembers: Bool {
@@ -339,6 +339,7 @@ struct ChatView: View {
         }
         .defaultScrollAnchor(.bottom)
         .modifier(ChatScrollKeyboardModifier())
+        .clipped()
         .onScrollGeometryChange(for: Bool.self) { geometry in
           let scrollableHeight =
             geometry.contentSize.height
@@ -548,7 +549,7 @@ private struct ChatRoomHeader: View {
   let onToggleMembers: () -> Void
 
   var body: some View {
-    HStack(spacing: 12) {
+    HStack(spacing: 10) {
       if let room = model.selectedRoom {
         if !room.avatarURL.isEmpty {
           RemoteAvatar(
@@ -561,39 +562,43 @@ private struct ChatRoomHeader: View {
             .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 11))
         }
         VStack(alignment: .leading, spacing: 2) {
-          Text(room.title).font(.headline).lineLimit(1).layoutPriority(1)
+          Text(room.title).font(.headline).lineLimit(1).help(room.title)
           if !room.subtitle.isEmpty {
             Text(room.subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
           }
         }
+        .layoutPriority(1)
       }
       Spacer(minLength: 12)
       // Advanced room tools are also available from the compact toolbar.
       Button { model.showMessageSearch = true } label: {
-        Image(systemName: "magnifyingglass").frame(width: 24, height: 24)
+        Image(systemName: "magnifyingglass").frame(width: 18, height: 18)
       }
-        .adaptiveGlassButton().help("Search messages").accessibilityLabel("Search messages")
+        .adaptiveGlassButton().controlSize(.small).help("Search messages").accessibilityLabel("Search messages")
       if let room = model.selectedRoom, room.scope == "direct" {
         Button { model.startCall(in: room) }
-          label: { Image(systemName: "phone").frame(width: 24, height: 24) }
-          .adaptiveGlassButton()
+          label: { Image(systemName: "phone").frame(width: 18, height: 18) }
+          .adaptiveGlassButton().controlSize(.small)
           .help(model.calls.activeCalls[room.roomID] == nil ? "Start call" : "Join existing call")
           .accessibilityLabel(model.calls.activeCalls[room.roomID] == nil ? "Start call" : "Join existing call")
       }
       if showsMemberButton {
         Button(action: onToggleMembers) {
           Image(systemName: "person.2")
-            .frame(width: 24, height: 24)
+            .frame(width: 18, height: 18)
         }
-        .adaptiveGlassButton()
+        .adaptiveGlassButton().controlSize(.small)
         .help(membersVisible ? "Hide members" : "Show members")
         .accessibilityLabel(membersVisible ? "Hide members" : "Show members")
       }
     }
+    .frame(minHeight: 40)
     .padding(.horizontal, 16)
     .padding(.vertical, 10)
-    .background(.bar)
+    .background(Color.panel, ignoresSafeAreaEdges: [])
     .overlay(alignment: .bottom) { Divider() }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("plainwire.chatHeader")
   }
 }
 
@@ -621,8 +626,9 @@ private struct ConversationMembersSidebar: View {
             .foregroundStyle(.secondary)
         }
       }
+      .frame(minHeight: 40)
       .padding(.horizontal, 16)
-      .padding(.vertical, 16)
+      .padding(.vertical, 10)
       Divider()
       if members.isEmpty {
         if model.loadingConversationDetails.contains(conversationID) {

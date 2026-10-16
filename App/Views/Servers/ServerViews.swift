@@ -42,17 +42,19 @@ struct ServerChannelBrowserView: View {
           url: model.mediaURL(server.iconURL), fallback: String(server.name.prefix(1)), size: 38,
           cornerRadius: 11)
         VStack(alignment: .leading, spacing: 2) {
-          Text(server.name).font(.headline).lineLimit(1)
+          Text(server.name).font(.headline).lineLimit(1).help(server.name)
           Text("\(server.memberCount) members")
             .font(.caption).foregroundStyle(.secondary)
         }
+        .layoutPriority(1)
         Spacer(minLength: 8)
         Button { showingServerSettings = true } label: {
           Image(systemName: "gearshape")
-            .frame(width: 28, height: 28)
+            .frame(width: 18, height: 18)
         }
         .adaptiveGlassButton()
         .controlSize(.small)
+        .help("Server settings")
         .accessibilityLabel("Server settings")
         Menu {
           ForEach(model.servers) { candidate in
@@ -69,14 +71,17 @@ struct ServerChannelBrowserView: View {
         } label: {
           Image(systemName: "chevron.up.chevron.down")
             .font(.caption.weight(.semibold))
-            .frame(width: 28, height: 28)
+            .frame(width: 18, height: 18)
         }
         .adaptiveGlassButton()
         .controlSize(.small)
+        .help("Choose server")
         .accessibilityLabel("Choose server")
       }
       .padding(.horizontal, 13)
       .padding(.vertical, 10)
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("plainwire.serverHeader")
     }
   }
 
@@ -91,6 +96,8 @@ struct ServerChannelBrowserView: View {
       }
       .modifier(ServerListStyleModifier())
       .scrollContentBackground(.hidden)
+      .frame(minHeight: 0, maxHeight: .infinity)
+      .clipped()
     } else if model.servers.isEmpty {
       ContentUnavailableView(
         "No servers", systemImage: "rectangle.3.group",
@@ -542,7 +549,7 @@ private struct ServerManagementSheet: View {
     }
     .padding(.horizontal, 10)
     .frame(width: 190)
-    .background(.bar)
+    .background(.bar, ignoresSafeAreaEdges: [])
   }
 #endif
 

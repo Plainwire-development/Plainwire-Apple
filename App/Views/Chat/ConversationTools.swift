@@ -396,7 +396,8 @@ struct ServerMembersSidebar: View {
   var body: some View {
     VStack(spacing: 0) {
       HStack { Text("Members").font(.headline); Spacer(); Text("\(members.count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
-        .padding(16)
+        .frame(minHeight: 40)
+        .padding(.horizontal, 16).padding(.vertical, 10)
       Divider()
       ScrollView {
         LazyVStack(spacing: 2) {

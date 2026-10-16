@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.3.2
+
+- Fix the extra translucent title-bar backgrounds covering server and chat headers by keeping Mac navigation panes in a single native split view.
+- Reserve space for app notices and attachment progress. Bound in-page bar backgrounds so they cannot bleed across headers or neighboring panes.
+- Make server/chat header actions more compact, preserve more room for names, align member headers, and remove the duplicate chat divider.
+- Extend native layout regression checks with populated chats, long messages, members, simultaneous notices, and title-bar background bounds.
+
 ## 2.3.1
 
 - Rebuild Mac navigation with native split views sized to the visible window. Fix oversized list viewports that obscured the first rows and made scrolling back to the top unreliable.

@@ -203,7 +203,7 @@ struct ForumThreadView: View {
     }
     .padding(16).frame(maxWidth: 802).cardSurface(cornerRadius: 18)
     .padding(.horizontal, 24).padding(.vertical, 12).frame(maxWidth: .infinity)
-    .background(.bar)
+    .background(.bar, ignoresSafeAreaEdges: [])
   }
 
   private var validReply: Bool {

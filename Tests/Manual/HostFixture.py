@@ -236,6 +236,19 @@ def handler_for(name):
                     "friends": [], "servers": [], "notifications": []}})
             elif self.path == "/api/notifications":
                 self.reply(200, {"ok": True, "data": []})
+            elif self.path.startswith("/api/messages?"):
+                query = parse_qs(urlsplit(self.path).query)
+                scope = query.get("scope", ["channel"])[0]
+                scope_id = int(query.get("scope_id", ["801"])[0])
+                bodies = ["Welcome to the community. Everything has a little more room here.",
+                          "A longer message should wrap comfortably without crowding the header, composer, or member list. " * 3,
+                          "The latest updates are ready to share. What are you working on today?"]
+                self.reply(200, {"ok": True, "data": [
+                    {"id": 9000 + index, "scope": scope, "scope_id": scope_id, "user_id": 20 + index % 3,
+                     "username": ["morgan", "alex", "sam"][index % 3],
+                     "display_name": ["Morgan Ellis", "Alex Chen", "Sam Rivera"][index % 3],
+                     "body": bodies[index % 3], "created_at": 1792108800000 + index * 600_000}
+                    for index in range(24)]})
             elif self.path.startswith("/api/gifs/search"):
                 self.reply(200, {"ok": True, "data": {"provider": "Fixture", "next": "", "results": [
                     {"id": "gif-1", "title": "Hello [friend] ||spoiler||", "url": "https://cdn.example/hello.gif",

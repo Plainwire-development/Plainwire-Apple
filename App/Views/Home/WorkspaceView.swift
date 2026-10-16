@@ -300,7 +300,7 @@ struct WebWorkspaceView: View {
           .help("Reload workspace").accessibilityLabel("Reload workspace")
       }
       .padding(12)
-      .background(.bar)
+      .background(.bar, ignoresSafeAreaEdges: [])
       Divider()
       if workspace.loading { ProgressView().progressViewStyle(.linear).padding(.horizontal) }
       if let error = workspace.error {
@@ -319,7 +319,7 @@ struct WebWorkspaceView: View {
           Spacer()
           ShareLink(item: url)
           Button("Dismiss") { workspace.downloadedFile = nil }
-        }.font(.caption).padding(12).background(.bar)
+        }.font(.caption).padding(12).background(.bar, ignoresSafeAreaEdges: [])
       }
     }
     .navigationTitle("More tools")

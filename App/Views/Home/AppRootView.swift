@@ -11,28 +11,33 @@ struct AppRootView: View {
   @AppStorage(AppPreferenceKeys.reduceInterfaceMotion) private var reduceInterfaceMotion = false
 
   var body: some View {
-    ZStack(alignment: .top) {
-      Group {
-        switch model.sessionState {
-        case .booting: LaunchView()
-        case .signedOut: SignInView()
-        case .ready: authenticatedRoot
-        case .unavailable: ConnectionRecoveryView()
-        }
+    Group {
+      switch model.sessionState {
+      case .booting: LaunchView()
+      case .signedOut: SignInView()
+      case .ready: authenticatedRoot
+      case .unavailable: ConnectionRecoveryView()
       }
-
-      if model.downloadingAttachment {
-        HStack(spacing: 10) { ProgressView().controlSize(.small); Text("Downloading attachment…").font(.caption) }
-          .padding(12).background(.regularMaterial, in: Capsule()).padding(.top, 10).zIndex(99)
-      }
-      if let message = model.errorMessage {
-        AppNoticeBanner(message: friendlyError(message)) {
-          withAnimation(reduceMotion || reduceInterfaceMotion ? nil : .snappy(duration: 0.2)) { model.errorMessage = nil }
+    }
+    .safeAreaInset(edge: .top, spacing: 0) {
+      if model.downloadingAttachment || model.errorMessage != nil {
+        VStack(spacing: 8) {
+          if model.downloadingAttachment {
+            HStack(spacing: 10) { ProgressView().controlSize(.small); Text("Downloading attachment…").font(.caption) }
+              .padding(12).background(.regularMaterial, in: Capsule())
+          }
+          if let message = model.errorMessage {
+            AppNoticeBanner(message: friendlyError(message)) {
+              withAnimation(reduceMotion || reduceInterfaceMotion ? nil : .snappy(duration: 0.2)) { model.errorMessage = nil }
+            }
+            .accessibilityIdentifier("plainwire.appNotice")
+          }
         }
         .padding(.horizontal, 14)
-        .padding(.top, 10)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background(Color.canvas, ignoresSafeAreaEdges: [])
         .transition(.move(edge: .top).combined(with: .opacity))
-        .zIndex(100)
       }
     }
     .animation(reduceMotion || reduceInterfaceMotion ? nil : .snappy(duration: 0.22), value: model.errorMessage != nil)
@@ -215,13 +220,20 @@ private struct MacRootView: View {
 
   var body: some View {
     GeometryReader { geometry in
+      // Nested split views create another native title-bar background over
+      // their headers. Keep every navigation pane in the window's one split.
       HSplitView {
         if sidebarVisible {
           SidebarView()
             .frame(minWidth: 200, idealWidth: 224, maxWidth: 280, maxHeight: .infinity)
             .padding(.top, geometry.safeAreaInsets.top)
         }
-        workspace
+        if showsBrowser {
+          browserPane
+            .frame(minWidth: 290, idealWidth: 340, maxWidth: 440, maxHeight: .infinity)
+            .padding(.top, geometry.safeAreaInsets.top)
+        }
+        detailPane
           .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
           .padding(.top, geometry.safeAreaInsets.top)
       }
@@ -247,26 +259,24 @@ private struct MacRootView: View {
 
   private var showsBrowser: Bool { model.selectedSection == .messages || model.selectedSection == .servers }
 
-  @ViewBuilder private var workspace: some View {
+  @ViewBuilder private var browserPane: some View {
+    if model.selectedSection == .messages { ConversationListView(compactNavigation: false) }
+    else { ServerChannelBrowserView() }
+  }
+
+  @ViewBuilder private var detailPane: some View {
     if showsBrowser {
-      HSplitView {
-        Group {
-          if model.selectedSection == .messages { ConversationListView(compactNavigation: false) }
-          else { ServerChannelBrowserView() }
+      NavigationStack {
+        if let room = model.selectedRoom,
+          room.scope == (model.selectedSection == .messages ? "direct" : "channel") {
+          ChatView()
+        } else {
+          EmptyDetailView(title: model.selectedSection == .messages ? "Your next conversation starts here" : "Choose a channel",
+            symbol: model.selectedSection == .messages ? "bubble.left.and.bubble.right" : "rectangle.3.group",
+            description: model.selectedSection == .messages ? "Select a conversation or start a new one." : "Pick a channel from your community to catch up.")
         }
-        .frame(minWidth: 290, idealWidth: 340, maxWidth: 440, maxHeight: .infinity)
-        NavigationStack {
-          if let room = model.selectedRoom,
-            room.scope == (model.selectedSection == .messages ? "direct" : "channel") {
-            ChatView()
-          } else {
-            EmptyDetailView(title: model.selectedSection == .messages ? "Your next conversation starts here" : "Choose a channel",
-              symbol: model.selectedSection == .messages ? "bubble.left.and.bubble.right" : "rectangle.3.group",
-              description: model.selectedSection == .messages ? "Select a conversation or start a new one." : "Pick a channel from your community to catch up.")
-          }
-        }
-        .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
       }
+      .clipped()
     } else {
       switch model.selectedSection {
       case .forums: ForumsView()
