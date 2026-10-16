@@ -4,6 +4,10 @@ Run `./scripts/verify.sh` and build the Mac and iOS Simulator targets before a r
 
 ## Local audit smoke tests
 
+`./scripts/verify-calling.sh` also runs the native media and layout checks against two local fixture hosts. It verifies that DM avatar sizes share a decoded asset, concurrent larger sizes download a URL once, small GIFs have a proportional cache cost, and old host transfers cannot repopulate cleared caches. It mounts actual conversation settings with 40 members at 360 × 420 and 560 × 520, plus a long profile at 360 × 400, and checks that the native scroll view reaches the final content. Sidebar light/dark, conversation settings, and profile captures are written to `/tmp/plainwire-sidebar-light.png`, `/tmp/plainwire-sidebar-dark.png`, `/tmp/plainwire-conversation-settings.png`, and `/tmp/plainwire-profile.png`.
+
+For a visual pass with a signed-in account, resize each profile/account/server/channel sheet, enter long names and bios, and scroll to its final action. Check the sidebar footer in light/dark appearance and with Reduce Transparency, verify rounded composer/call controls, and switch between DMs with a GIF avatar. The avatar should keep its clipping and appear immediately when cached. Confirm the separate Mac Settings window follows the account theme. First-time downloads still depend on the host and image size.
+
 These Mac checks need no account. The playback test mounts controls in an invisible window and generates its own sample video:
 
 ```sh

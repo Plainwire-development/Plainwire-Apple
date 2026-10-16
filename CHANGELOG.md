@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.2.1
+
+- Make Mac profile, account, conversation, server, and channel forms scroll with native grouped layouts. Allow sheets to resize, improve long text and member rows, and keep compact windows usable.
+- Match the sidebar and account footer materials, keep avatars at their intended size, use rounded button borders, and apply the selected theme to the separate Settings window.
+- Share avatar downloads across image sizes, reuse decoded small GIFs in DM rows and headers, show warm images immediately, and account for actual GIF frame sizes in the memory cache.
+- Add native narrow-window scrolling checks and regression coverage for concurrent image sizes sharing one transfer.
+
 ## 2.2.0
 
 - Render animated GIF/APNG avatars, banners, and chat images with background frame decoding, bounded shared caches, and native layer playback. Pause animation offscreen, when inactive, and with Reduce Motion or autoplay disabled.

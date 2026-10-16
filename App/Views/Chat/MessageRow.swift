@@ -144,10 +144,12 @@ struct MessageRow: View, Equatable {
       Text(presentation.timestampText)
         .font(.caption2)
         .foregroundStyle(.tertiary)
+        .fixedSize()
       if message.editedAt != nil {
         Text("edited")
           .font(.caption2)
           .foregroundStyle(.tertiary)
+          .fixedSize()
       }
     }
   }

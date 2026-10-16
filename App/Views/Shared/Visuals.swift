@@ -92,13 +92,14 @@ struct PlainwireMark: View {
 }
 
 struct RemoteAvatar: View {
+  @Environment(\.displayScale) private var displayScale
   let url: URL?
   let fallback: String
   let size: CGFloat
   var cornerRadius: CGFloat? = nil
 
   var body: some View {
-    CachedRemoteImage(url: url, pixelSize: Int(size * 2)) { phase in
+    CachedRemoteImage(url: url, pixelSize: Int(ceil(size * displayScale))) { phase in
       switch phase {
       case .success(let image):
         image.resizable().scaledToFill()
@@ -115,12 +116,13 @@ struct RemoteAvatar: View {
       }
     }
     .frame(width: size, height: size)
+    .fixedSize()
     .clipShape(RoundedRectangle(cornerRadius: cornerRadius ?? size / 2, style: .continuous))
     .overlay {
       RoundedRectangle(cornerRadius: cornerRadius ?? size / 2, style: .continuous)
         .strokeBorder(.white.opacity(0.16), lineWidth: 1)
     }
-    .contentShape(Rectangle())
+    .contentShape(RoundedRectangle(cornerRadius: cornerRadius ?? size / 2, style: .continuous))
     .accessibilityHidden(true)
   }
 
@@ -183,7 +185,12 @@ struct AdaptiveGlassContainer<Content: View>: View {
 struct AdaptiveGlassButtonModifier: ViewModifier {
   let prominent: Bool
 
-  @ViewBuilder func body(content: Content) -> some View {
+  func body(content: Content) -> some View {
+    styled(content)
+      .buttonBorderShape(.roundedRectangle(radius: 10))
+  }
+
+  @ViewBuilder private func styled(_ content: Content) -> some View {
     if #available(iOS 26.0, macOS 26.0, *) {
       if prominent {
         content.buttonStyle(.glassProminent)
@@ -226,12 +233,9 @@ struct ConnectionStatusView: View {
   var body: some View {
     HStack(spacing: 7) {
       Circle().fill(color).frame(width: 7, height: 7)
-      Text(label).font(.caption).foregroundStyle(.secondary)
-      Spacer(minLength: 0)
+      Text(label).font(.caption.weight(.medium)).foregroundStyle(.secondary)
+        .lineLimit(1)
     }
-    .padding(.horizontal, 10)
-    .padding(.vertical, 7)
-    .adaptiveGlass(cornerRadius: 14)
     .accessibilityElement(children: .combine)
     .accessibilityLabel("Realtime status: \(label)")
   }
@@ -263,7 +267,8 @@ private struct SheetErrorNoticeModifier: ViewModifier {
       if let error = model.errorMessage {
         HStack(alignment: .top, spacing: 10) {
           Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-          Text(error).font(.caption).frame(maxWidth: .infinity, alignment: .leading)
+          Text(error).font(.caption).fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
           Button { model.errorMessage = nil } label: { Image(systemName: "xmark") }
             .buttonStyle(.plain).accessibilityLabel("Dismiss error")
         }.padding(12).background(.regularMaterial)
@@ -277,12 +282,33 @@ extension View {
 }
 
 extension View {
-  @ViewBuilder func adaptiveSheetSize(minWidth: CGFloat, idealWidth: CGFloat? = nil, minHeight: CGFloat) -> some View {
+  @ViewBuilder func adaptiveSheetSize(
+    minWidth: CGFloat, idealWidth: CGFloat? = nil, minHeight: CGFloat, idealHeight: CGFloat? = nil
+  ) -> some View {
     #if os(macOS)
-      frame(minWidth: minWidth, idealWidth: idealWidth, minHeight: minHeight)
+      frame(
+        minWidth: minWidth, idealWidth: idealWidth ?? max(minWidth, 480), maxWidth: .infinity,
+        minHeight: minHeight, idealHeight: idealHeight ?? max(minHeight, 520), maxHeight: .infinity
+      )
+      .presentationSizing(.fitted)
+      .buttonBorderShape(.roundedRectangle(radius: 10))
     #else
       frame(maxWidth: .infinity, maxHeight: .infinity)
     #endif
+  }
+}
+
+// Paint the entire sidebar once, including its bottom inset. Mixing a List's
+// default vibrancy with a separate bar material gives the footer a hard seam.
+struct SidebarSurface: View {
+  @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+  var body: some View {
+    if reduceTransparency {
+      Color.windowBackground
+    } else {
+      Rectangle().fill(.regularMaterial)
+    }
   }
 }
 

@@ -44,9 +44,11 @@ final class RemoteImageAsset: @unchecked Sendable {
         return delay.isFinite && delay >= 0.02 ? min(delay, 60) : 0.1
       }
     } else { durations = [0.1] }
-    frames.totalCostLimit = 8 * 1024 * 1024
+    let posterBytes = poster.bytesPerRow * poster.height
+    let frameBudget = min(8 * 1024 * 1024, posterBytes * min(12, max(0, durations.count - 1)))
+    frames.totalCostLimit = max(1, frameBudget)
     frames.countLimit = 12
-    cost = data.count + poster.bytesPerRow * poster.height + (durations.count > 1 ? 8 * 1024 * 1024 : 0)
+    cost = data.count + posterBytes + frameBudget
   }
 
   func frame(at index: Int) -> CGImage? {
@@ -164,6 +166,11 @@ struct CachedRemoteImage<Content: View>: View {
   }
 
   private func phase(generation: Int) -> CachedImagePhase {
+    // A list, header, and message can mount the same avatar in one update.
+    // Consult memory synchronously so cached images never flash their initials.
+    if let url, let cached = RemoteImageStore.shared.cachedImage(for: url, pixelSize: pixelSize) {
+      return .success(RemoteImage(asset: cached))
+    }
     guard loadedURL == url, loadedGeneration == generation else { return .empty }
     if let asset { return .success(RemoteImage(asset: asset)) }
     return finished ? .failure : .empty
@@ -175,17 +182,21 @@ final class RemoteImageStore {
   static let shared = RemoteImageStore()
   private(set) var generation = 0
   @ObservationIgnored private let cache = NSCache<NSString, RemoteImageAsset>()
+  @ObservationIgnored private let sourceCache = NSCache<NSURL, NSData>()
   @ObservationIgnored private var session: URLSession
   @ObservationIgnored private var transferDelegate: PlainwireTransferDelegate
   @ObservationIgnored private var configuration = PlainwireConfiguration()
   @ObservationIgnored private var pending: [String: Task<RemoteImageAsset?, Never>] = [:]
+  @ObservationIgnored private var transfers: [URL: Task<Data?, Never>] = [:]
 
   private init() {
     let delegate = PlainwireTransferDelegate(configuration: PlainwireConfiguration(), maximumBytes: 32 * 1024 * 1024)
     transferDelegate = delegate
     session = Self.makeSession(delegate: delegate)
     cache.countLimit = 240
-    cache.totalCostLimit = 96 * 1024 * 1024
+    cache.totalCostLimit = 72 * 1024 * 1024
+    sourceCache.totalCostLimit = 24 * 1024 * 1024
+    sourceCache.countLimit = 120
   }
 
   private static func makeSession(delegate: PlainwireTransferDelegate) -> URLSession {
@@ -193,7 +204,7 @@ final class RemoteImageStore {
     configuration.httpCookieStorage = .shared
     configuration.timeoutIntervalForRequest = 15
     configuration.timeoutIntervalForResource = 45
-    configuration.httpMaximumConnectionsPerHost = 4
+    configuration.httpMaximumConnectionsPerHost = 6
     configuration.urlCache = nil
     return URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
   }
@@ -212,12 +223,25 @@ final class RemoteImageStore {
     generation += 1
     pending.values.forEach { $0.cancel() }
     pending.removeAll()
+    transfers.values.forEach { $0.cancel() }
+    transfers.removeAll()
     cache.removeAllObjects()
+    sourceCache.removeAllObjects()
+  }
+
+  // Nearby view sizes share a decoded asset. In particular, all small avatars
+  // use 128 pixels instead of retaining a separate GIF decoder for every row.
+  private func imageSize(_ requestedSize: Int) -> Int {
+    [128, 256, 512, 1024, 1600].first { $0 >= requestedSize } ?? 1600
+  }
+
+  func cachedImage(for url: URL, pixelSize: Int) -> RemoteImageAsset? {
+    cache.object(forKey: "\(url.absoluteString)#\(imageSize(pixelSize))" as NSString)
   }
 
   func image(for url: URL, pixelSize: Int) async -> RemoteImageAsset? {
     guard configuration.mediaURL(url.absoluteString) != nil else { return nil }
-    let pixelSize = min(1600, max(64, pixelSize))
+    let pixelSize = imageSize(pixelSize)
     let key = "\(url.absoluteString)#\(pixelSize)"
     if let cached = cache.object(forKey: key as NSString) { return cached }
     let requestGeneration = generation
@@ -225,28 +249,53 @@ final class RemoteImageStore {
       let result = await task.value
       return generation == requestGeneration ? result : nil
     }
-    let delegate = transferDelegate
-    let session = session
     let task = Task<RemoteImageAsset?, Never> {
-      do {
-        let (file, response) = try await delegate.download(URLRequest(url: url), using: session)
-        defer { try? FileManager.default.removeItem(at: file) }
-        let size = (try file.resourceValues(forKeys: [.fileSizeKey])).fileSize ?? 0
-        guard !Task.isCancelled, size > 0, size <= 32 * 1024 * 1024,
-          (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-        let decode = Task.detached(priority: .utility) { () -> RemoteImageAsset? in
-          guard !Task.isCancelled, let data = try? Data(contentsOf: file, options: .mappedIfSafe) else { return nil }
-          return RemoteImageAsset(data: data, pixelSize: pixelSize)
-        }
-        let result = await withTaskCancellationHandler { await decode.value } onCancel: { decode.cancel() }
-        return Task.isCancelled ? nil : result
-      } catch { return nil }
+      guard !Task.isCancelled,
+        let data = await self.source(for: url, generation: requestGeneration), !Task.isCancelled else { return nil }
+      let decode = Task.detached(priority: .utility) { () -> RemoteImageAsset? in
+        guard !Task.isCancelled else { return nil }
+        return RemoteImageAsset(data: data, pixelSize: pixelSize)
+      }
+      let result = await withTaskCancellationHandler { await decode.value } onCancel: { decode.cancel() }
+      return Task.isCancelled ? nil : result
     }
     pending[key] = task
     let result = await task.value
     guard generation == requestGeneration else { return nil }
     pending[key] = nil
     if let result { cache.setObject(result, forKey: key as NSString, cost: result.cost) }
+    return result
+  }
+
+  private func source(for url: URL, generation requestGeneration: Int) async -> Data? {
+    guard !Task.isCancelled, generation == requestGeneration else { return nil }
+    if let data = sourceCache.object(forKey: url as NSURL) { return data as Data }
+    if let task = transfers[url] {
+      let result = await task.value
+      return generation == requestGeneration ? result : nil
+    }
+    let delegate = transferDelegate
+    let session = session
+    let task = Task<Data?, Never> {
+      do {
+        let (file, response) = try await delegate.download(URLRequest(url: url), using: session)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let size = (try file.resourceValues(forKeys: [.fileSizeKey])).fileSize ?? 0
+        guard !Task.isCancelled, size > 0, size <= 32 * 1024 * 1024,
+          (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        let read = Task.detached(priority: .utility) { () -> Data? in
+          guard !Task.isCancelled else { return nil }
+          return try? Data(contentsOf: file, options: .mappedIfSafe)
+        }
+        let data = await withTaskCancellationHandler { await read.value } onCancel: { read.cancel() }
+        return Task.isCancelled ? nil : data
+      } catch { return nil }
+    }
+    transfers[url] = task
+    let result = await task.value
+    guard generation == requestGeneration else { return nil }
+    transfers[url] = nil
+    if let result { sourceCache.setObject(result as NSData, forKey: url as NSURL, cost: result.count) }
     return result
   }
 }

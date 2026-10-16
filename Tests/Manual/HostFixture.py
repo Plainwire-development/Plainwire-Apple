@@ -13,6 +13,8 @@ import plistlib
 from pathlib import Path
 
 foreign_cookies = []
+image_requests = {}
+image_requests_lock = threading.Lock()
 image = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a47sAAAAASUVORK5CYII=")
 
 
@@ -37,7 +39,7 @@ def handler_for(name):
 
         def session(self):
             return {"user": {"id": 7, "username": "fixture", "display_name": "Host " + name,
-                             "status": "online", "theme": "system"},
+                             "status": "online", "theme": "system", "avatar_url": "/image"},
                     "csrf": "csrf-" + name, "server_time": 1}
 
         def do_GET(self):
@@ -45,10 +47,17 @@ def handler_for(name):
             other = "B" if name == "A" else "A"
             if "pw_session=host-" + other in cookies:
                 foreign_cookies.append((name, self.path))
-            if self.path in ("/image", "/slow-image"):
-                if self.path == "/slow-image":
+            if self.path in ("/image", "/slow-image", "/coalesced-image"):
+                with image_requests_lock:
+                    key = name + self.path
+                    image_requests[key] = image_requests.get(key, 0) + 1
+                if self.path in ("/slow-image", "/coalesced-image"):
                     time.sleep(0.5)
                 self.reply(200, image, content_type="image/png")
+            elif self.path == "/image-request-counts":
+                with image_requests_lock:
+                    counts = dict(image_requests)
+                self.reply(200, counts)
             elif self.path == "/api/me":
                 time.sleep(0.12)
                 if "pw_session=host-" + name in cookies:
@@ -64,7 +73,17 @@ def handler_for(name):
                     {"id": "gif-1", "title": "Hello [friend] ||spoiler||", "url": "https://cdn.example/hello.gif",
                      "preview_url": "https://cdn.example/preview.gif"}]}})
             elif self.path == "/api/profile/7":
-                self.reply(200, {"ok": True, "data": {"user": self.session()["user"]}})
+                profile = self.session()["user"]
+                profile["display_name"] = "A person with a longer display name"
+                profile["bio"] = "A long profile should stay readable when the window is small. " * 30
+                self.reply(200, {"ok": True, "data": {"user": profile}})
+            elif self.path == "/api/conversation/42":
+                self.reply(200, {"ok": True, "data": {
+                    "conversation": {"id": 42, "owner_id": 7, "name": "Layout fixture"},
+                    "members": [{"user": {"id": index, "username": "member_" + str(index),
+                                            "display_name": "A member with a long display name " + str(index)},
+                                 "group_role": "owner" if index == 7 else "member"}
+                                for index in range(7, 47)]}})
             else:
                 self.reply(404, {"ok": False, "error": "not_found"})
 

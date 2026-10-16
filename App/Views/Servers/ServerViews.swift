@@ -276,6 +276,7 @@ private struct CreateServerSheet: View {
           TextField("Description", text: $description, axis: .vertical).lineLimit(2...5)
         }
       }
+      .formStyle(.grouped)
       .navigationTitle("Create Server")
       .toolbar {
         ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -342,6 +343,7 @@ private struct JoinServerSheet: View {
           }
         }
       }
+      .formStyle(.grouped)
       .navigationTitle("Join Server")
       .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
     }
@@ -795,7 +797,7 @@ private struct ServerManagementSheet: View {
 private struct ServerManagementFrameModifier: ViewModifier {
   @ViewBuilder func body(content: Content) -> some View {
     #if os(macOS)
-      content.frame(minWidth: 740, idealWidth: 820, minHeight: 610, idealHeight: 700)
+      content.adaptiveSheetSize(minWidth: 660, idealWidth: 820, minHeight: 480, idealHeight: 640)
     #else
       content
     #endif
@@ -827,6 +829,7 @@ private struct ChannelEditorSheet: View {
           Stepper(slowmodeSeconds == 0 ? "Slow mode: Off" : "Slow mode: \(slowmodeSeconds) seconds", value: $slowmodeSeconds, in: 0...21600, step: 5)
         }
       }
+      .formStyle(.grouped)
       .navigationTitle("Channel Settings")
       .toolbar {
         ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }

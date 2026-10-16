@@ -54,6 +54,21 @@ enum MediaAndHostsSmoke {
     let firstImage = await RemoteImageStore.shared.image(for: first.appURL().appendingPathComponent("image"), pixelSize: 64)
     let cachedImage = await RemoteImageStore.shared.image(for: first.appURL().appendingPathComponent("image"), pixelSize: 64)
     try check(firstImage != nil && firstImage === cachedImage, "Repeated avatars did not share the cache")
+    let rowImage = await RemoteImageStore.shared.image(for: first.appURL().appendingPathComponent("image"), pixelSize: 92)
+    try check(rowImage === firstImage, "DM rows and headers retained separate avatar decoders")
+    try check(RemoteImageStore.shared.cachedImage(for: first.appURL().appendingPathComponent("image"), pixelSize: 80) === firstImage,
+      "A warm avatar was not immediately available during layout")
+    let sharedURL = first.appURL().appendingPathComponent("coalesced-image")
+    async let small = RemoteImageStore.shared.image(for: sharedURL, pixelSize: 80)
+    async let large = RemoteImageStore.shared.image(for: sharedURL, pixelSize: 512)
+    let sharedImages = await (small, large)
+    try check(sharedImages.0 != nil && sharedImages.1 != nil, "Concurrent avatar sizes failed to load")
+    // A third size must use the downloaded bytes even though it needs its own decoder.
+    let profileImage = await RemoteImageStore.shared.image(for: sharedURL, pixelSize: 192)
+    let (countsData, _) = try await URLSession.shared.data(from: first.appURL().appendingPathComponent("image-request-counts"))
+    let counts = try JSONDecoder().decode([String: Int].self, from: countsData)
+    try check(profileImage != nil && counts["A/coalesced-image"] == 1,
+      "Different avatar sizes downloaded the same file more than once")
     let staleImage = Task { await RemoteImageStore.shared.image(for: first.appURL().appendingPathComponent("slow-image"), pixelSize: 64) }
     try await Task.sleep(for: .milliseconds(50))
     let generation = RemoteImageStore.shared.generation
@@ -87,7 +102,7 @@ enum MediaAndHostsSmoke {
     await model.logout()
     await restore.value
     try check(model.sessionState == .signedOut && model.session == nil, "A stale session restore undid logout")
-    print("Media and hosts smoke passed: GIF frames/timing/playback, GIF search/insertion, downsampling, cache invalidation, two-host draft/session isolation, native preferences, and Return/Command-Return keyboard events.")
+    print("Media and hosts smoke passed: GIF playback/budget, shared avatar decoders/transfers, narrow-window scrolling, cache invalidation, two-host isolation, native preferences, and Return/Command-Return keyboard events.")
   }
 
   @MainActor private static func verifyAnimatedImages() async throws {
@@ -113,6 +128,7 @@ enum MediaAndHostsSmoke {
     try check(asset.isAnimated && asset.durations.count == 2, "GIF was flattened to a poster")
     try check(abs(asset.durations[0] - 0.04) < 0.001 && abs(asset.durations[1] - 0.07) < 0.001, "GIF timing changed")
     try check(asset.poster.width == 64 && asset.poster.height == 32, "Avatar/banner frames were not downsampled")
+    try check(asset.cost < 1024 * 1024, "A tiny GIF reserves the full 8 MiB frame cache")
     let second = await Task.detached { asset.frame(at: 1) }.value
     try check(second != nil && second?.dataProvider?.data != asset.poster.dataProvider?.data, "GIF frames have identical pixels")
     try check(asset.frame(at: -1) == nil && asset.frame(at: 2) == nil, "Invalid GIF frame indices were accepted")
@@ -149,16 +165,78 @@ enum MediaAndHostsSmoke {
     }
     let sidebar = NSHostingView(rootView: SidebarView().environment(model))
     window.contentView = sidebar
+    window.setContentSize(NSSize(width: 228, height: 620))
     sidebar.layoutSubtreeIfNeeded()
-    try await Task.sleep(for: .milliseconds(50))
+    try await Task.sleep(for: .milliseconds(150))
+    for (name, appearance) in [("dark", NSAppearance.Name.darkAqua), ("light", .aqua)] {
+      window.appearance = NSAppearance(named: appearance)
+      sidebar.layoutSubtreeIfNeeded()
+      try await Task.sleep(for: .milliseconds(50))
+      try capture(sidebar, path: "/tmp/plainwire-sidebar-\(name).png")
+    }
+    window.appearance = NSAppearance(named: .aqua)
+    await model.loadConversationDetails(42)
+    let group = NSHostingView(rootView: ConversationSettingsSheet(conversation: model.conversations[0]).environment(model))
+    window.contentView = group
+    for size in [NSSize(width: 360, height: 420), NSSize(width: 560, height: 520)] {
+      window.setContentSize(size)
+      try await Task.sleep(for: .milliseconds(150))
+      group.layoutSubtreeIfNeeded()
+      try verifyScrolling(group, label: "Conversation settings at \(size)")
+    }
+    try capture(group, path: "/tmp/plainwire-conversation-settings.png")
+    let profile = NSHostingView(rootView: PersonProfileSheet(userID: 7).environment(model)
+      .background(Color(nsColor: .windowBackgroundColor)))
+    window.contentView = profile
+    window.setContentSize(NSSize(width: 360, height: 400))
+    // Wait for the fixture profile request, then exercise the actual scroll view.
+    for _ in 0..<20 {
+      try await Task.sleep(for: .milliseconds(50))
+      profile.layoutSubtreeIfNeeded()
+      if overflowingScrollView(in: profile) != nil { break }
+    }
+    try verifyScrolling(profile, label: "Long profile")
+    try capture(profile, path: "/tmp/plainwire-profile.png")
     let picker = NSHostingView(rootView: ServerHostSheet().environment(model))
     window.contentView = picker
+    window.setContentSize(NSSize(width: 520, height: 520))
     picker.layoutSubtreeIfNeeded()
     try await Task.sleep(for: .milliseconds(50))
     let gifs = NSHostingView(rootView: GIFPickerSheet(room: .init(scope: "direct", roomID: 42, title: "GIF fixture")).environment(model))
     window.contentView = gifs
     gifs.layoutSubtreeIfNeeded()
     try await Task.sleep(for: .milliseconds(50))
+  }
+
+  @MainActor private static func overflowingScrollView(in view: NSView) -> NSScrollView? {
+    if let scroll = view as? NSScrollView, let document = scroll.documentView,
+      document.frame.height > scroll.contentView.bounds.height + 40 { return scroll }
+    for child in view.subviews {
+      if let found = overflowingScrollView(in: child) { return found }
+    }
+    return nil
+  }
+
+  @MainActor private static func verifyScrolling(_ view: NSView, label: String) throws {
+    guard let scroll = overflowingScrollView(in: view), let document = scroll.documentView else {
+      throw Failure.check("\(label) compressed its content instead of providing a scroll view")
+    }
+    let clip = scroll.contentView
+    clip.scroll(to: NSPoint(x: 0, y: 0))
+    let initial = clip.bounds.origin.y
+    clip.scroll(to: NSPoint(x: 0, y: document.frame.height - clip.bounds.height))
+    scroll.reflectScrolledClipView(clip)
+    try check(clip.bounds.origin.y > initial + 20, "\(label) did not scroll to its last rows")
+    clip.scroll(to: .zero)
+    scroll.reflectScrolledClipView(clip)
+  }
+
+  @MainActor private static func capture(_ view: NSView, path: String) throws {
+    guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+      throw Failure.check("Could not capture \(path)")
+    }
+    view.cacheDisplay(in: view.bounds, to: bitmap)
+    try bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
   }
 
   @MainActor private static func verifyComposer(model: AppModel) async throws {

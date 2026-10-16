@@ -66,7 +66,7 @@ struct AppRootView: View {
               Button("Done") { model.showWorkspace = false }
             }
           }
-      }.adaptiveSheetSize(minWidth: 800, minHeight: 620)
+      }.adaptiveSheetSize(minWidth: 680, idealWidth: 1000, minHeight: 480, idealHeight: 700)
     }
     .onChange(of: model.showWorkspace) { _, shown in
       if !shown { Task { await model.refresh() } }

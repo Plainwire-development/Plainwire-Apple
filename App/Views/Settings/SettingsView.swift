@@ -40,6 +40,7 @@ struct SettingsView: View {
         mobileSettings
       #endif
     }
+    .preferredColorScheme(preferredColorScheme)
     .modifier(OptionalNavigationTitle(enabled: showNavigationTitle, title: "Settings"))
     .task { await refreshNotificationStatus() }
     .onChange(of: scenePhase) { _, phase in
@@ -57,6 +58,14 @@ struct SettingsView: View {
     }
     .confirmationDialog("Clear all message drafts for this account?", isPresented: $confirmingDraftClear, titleVisibility: .visible) {
       Button("Clear Drafts", role: .destructive) { model.clearDrafts() }
+    }
+  }
+
+  private var preferredColorScheme: ColorScheme? {
+    switch model.session?.user.theme {
+    case "light": .light
+    case "dark": .dark
+    default: nil
     }
   }
 
@@ -159,6 +168,7 @@ struct SettingsView: View {
         .tabItem { Label("Account", systemImage: "key.horizontal") }
     }
     .frame(minWidth: 600, minHeight: 480)
+    .buttonBorderShape(.roundedRectangle(radius: 10))
   }
   #endif
 
@@ -417,10 +427,11 @@ private struct ProfileSettingsHeader: View {
       VStack(alignment: .leading, spacing: 4) {
         Text(user.displayName)
           .font(.title2.weight(.bold))
-          .lineLimit(1)
+          .lineLimit(2).fixedSize(horizontal: false, vertical: true)
         Text("@\(user.username)")
           .font(.subheadline)
           .foregroundStyle(.secondary)
+          .lineLimit(2).fixedSize(horizontal: false, vertical: true)
         if !user.status.isEmpty {
           Text(user.status)
             .font(.caption)
@@ -428,45 +439,10 @@ private struct ProfileSettingsHeader: View {
             .lineLimit(2)
         }
       }
-      Spacer(minLength: 12)
-      ConnectionMiniPill()
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
     .padding(18)
     .settingsSurface(cornerRadius: 24)
-  }
-}
-
-private struct ConnectionMiniPill: View {
-  @Environment(AppModel.self) private var model
-
-  var body: some View {
-    HStack(spacing: 6) {
-      Circle().fill(color).frame(width: 7, height: 7)
-      Text(label).font(.caption.weight(.medium))
-    }
-    .foregroundStyle(.secondary)
-    .padding(.horizontal, 10)
-    .padding(.vertical, 7)
-    .adaptiveGlass(cornerRadius: 14)
-    .accessibilityElement(children: .combine)
-  }
-
-  private var color: Color {
-    switch model.realtimeState {
-    case .connected: .green
-    case .connecting, .reconnecting: .orange
-    case .failed: .red
-    case .stopped: .secondary
-    }
-  }
-  private var label: String {
-    switch model.realtimeState {
-    case .connected: "Connected"
-    case .connecting: "Connecting"
-    case .reconnecting: "Reconnecting"
-    case .failed: "Offline"
-    case .stopped: "Not connected"
-    }
   }
 }
 
@@ -660,6 +636,7 @@ private struct ProfileEditorSheet: View {
           }
         }
       }
+      .formStyle(.grouped)
       .navigationTitle("Edit Profile")
       .toolbar {
         ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -784,6 +761,7 @@ private struct AccountSecuritySheet: View {
             .disabled(busy || accountPassword.isEmpty || accountConfirmation != "DELETE")
         }
       }
+      .formStyle(.grouped)
       .navigationTitle("Account")
       .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
     }

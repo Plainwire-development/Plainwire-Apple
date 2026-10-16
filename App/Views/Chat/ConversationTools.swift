@@ -198,13 +198,13 @@ struct MessageResultRow: View {
       RemoteAvatar(url: model.mediaURL(message.avatarURL), fallback: String(message.displayName.prefix(1)), size: 34)
       VStack(alignment: .leading, spacing: 5) {
         HStack {
-          Text(message.displayName).font(.subheadline.weight(.semibold))
+          Text(message.displayName).font(.subheadline.weight(.semibold)).lineLimit(1).layoutPriority(1)
           Spacer()
           Text(Date(timeIntervalSince1970: Double(message.createdAt) / 1000), format: .dateTime.month().day().hour().minute())
-            .font(.caption2).foregroundStyle(.secondary)
+            .font(.caption2).foregroundStyle(.secondary).fixedSize()
         }
         Text(PWMessageText.redactingSpoilers(message.body))
-          .font(.body).lineLimit(4).foregroundStyle(.primary)
+          .font(.body).lineLimit(4).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
         Text(roomTitle).font(.caption).foregroundStyle(.secondary)
       }
     }.padding(.vertical, 7).contentShape(Rectangle())
@@ -331,10 +331,15 @@ struct ConversationSettingsSheet: View {
         }
         Section("Members") {
           ForEach(model.conversationDetails[conversation.id]?.members ?? [], id: \.user.id) { member in
-            HStack {
-              Text(member.nickname.isEmpty ? member.user.displayName : member.nickname)
-              Spacer()
-              Text(member.groupRole.capitalized).font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 12) {
+              RemoteAvatar(url: model.mediaURL(member.user.avatarURL),
+                fallback: String(member.user.displayName.prefix(1)), size: 32)
+              VStack(alignment: .leading, spacing: 3) {
+                Text(member.nickname.isEmpty ? member.user.displayName : member.nickname)
+                  .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                Text(member.groupRole.capitalized).font(.caption).foregroundStyle(.secondary)
+              }
+              Spacer(minLength: 8)
               if conversation.ownerId == model.session?.user.id, member.user.id != conversation.ownerId {
                 Menu {
                   Button(member.groupRole == "moderator" ? "Remove Moderator Role" : "Make Moderator") {
@@ -351,6 +356,7 @@ struct ConversationSettingsSheet: View {
           Button("Leave Conversation", role: .destructive) { confirmLeave = true }
         }
       }
+      .formStyle(.grouped)
       .navigationTitle("Conversation Settings")
       .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
       .task { name = conversation.name; await model.loadConversationDetails(conversation.id) }
@@ -414,7 +420,7 @@ struct ServerMembersSidebar: View {
           }
         }.padding(6)
       }
-    }.background(.bar)
+    }.background { SidebarSurface() }
     .sheet(item: $selectedUser) { PersonProfileSheet(userID: $0.id) }
   }
   private func name(_ member: PWServerMember) -> String {

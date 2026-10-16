@@ -144,6 +144,7 @@ private struct ConversationRow: View {
             Text(conversationDate)
               .font(.caption2)
               .foregroundStyle(.tertiary)
+              .fixedSize()
           }
         }
 

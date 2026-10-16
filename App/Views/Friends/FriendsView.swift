@@ -277,12 +277,16 @@ struct PersonProfileSheet: View {
                            fallback: String(user.displayName.prefix(1)), size: 72)
               VStack(alignment: .leading, spacing: 3) {
                 Text(user.displayName).font(.title2.bold())
+                  .fixedSize(horizontal: false, vertical: true)
                 Text("@\(user.username)").foregroundStyle(.secondary)
+                  .fixedSize(horizontal: false, vertical: true)
               }
             }
             Label(model.livePresenceStatus(for: user)?.capitalized ?? "Presence unavailable", systemImage: "circle.fill")
               .font(.subheadline).foregroundStyle(.secondary)
-            if !user.bio.isEmpty { Text(user.bio).textSelection(.enabled) }
+            if !user.bio.isEmpty {
+              Text(user.bio).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            }
             Text("Joined \(Date(timeIntervalSince1970: TimeInterval(user.createdAt) / 1000).formatted(date: .abbreviated, time: .omitted))")
               .font(.caption).foregroundStyle(.secondary)
             if user.id != model.session?.user.id {

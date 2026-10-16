@@ -471,18 +471,15 @@ struct ChatView: View {
 
   private func editSheet(_ message: PWMessage) -> some View {
     NavigationStack {
-      VStack(alignment: .leading, spacing: 14) {
-        Text("Edit message")
-          .font(.headline)
+      ScrollView {
         TextField("Message", text: $editText, axis: .vertical)
           .textFieldStyle(.plain)
-          .lineLimit(3...12)
+          .lineLimit(3...)
           .padding(12)
           .background(
             .primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        Spacer(minLength: 0)
+          .padding(18)
       }
-      .padding(18)
       .navigationTitle("Edit Message")
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
@@ -500,7 +497,7 @@ struct ChatView: View {
         }
       }
     }
-    .adaptiveSheetSize(minWidth: 390, minHeight: 250)
+    .adaptiveSheetSize(minWidth: 390, idealWidth: 520, minHeight: 250, idealHeight: 340)
     .sheetErrorNotice()
   }
 
@@ -564,7 +561,7 @@ private struct ChatRoomHeader: View {
             .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 11))
         }
         VStack(alignment: .leading, spacing: 2) {
-          Text(room.title).font(.headline).lineLimit(1)
+          Text(room.title).font(.headline).lineLimit(1).layoutPriority(1)
           if !room.subtitle.isEmpty {
             Text(room.subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
           }
@@ -572,11 +569,13 @@ private struct ChatRoomHeader: View {
       }
       Spacer(minLength: 12)
       // Advanced room tools are also available from the compact toolbar.
-      Button { model.showMessageSearch = true } label: { Image(systemName: "magnifyingglass") }
-        .buttonStyle(.plain).help("Search messages").accessibilityLabel("Search messages")
+      Button { model.showMessageSearch = true } label: {
+        Image(systemName: "magnifyingglass").frame(width: 24, height: 24)
+      }
+        .adaptiveGlassButton().help("Search messages").accessibilityLabel("Search messages")
       if let room = model.selectedRoom, room.scope == "direct" {
         Button { model.startCall(in: room) }
-          label: { Image(systemName: "phone") }
+          label: { Image(systemName: "phone").frame(width: 24, height: 24) }
           .adaptiveGlassButton()
           .help(model.calls.activeCalls[room.roomID] == nil ? "Start call" : "Join existing call")
           .accessibilityLabel(model.calls.activeCalls[room.roomID] == nil ? "Start call" : "Join existing call")
@@ -584,18 +583,17 @@ private struct ChatRoomHeader: View {
       if showsMemberButton {
         Button(action: onToggleMembers) {
           Image(systemName: "person.2")
-            .frame(width: 28, height: 28)
+            .frame(width: 24, height: 24)
         }
         .adaptiveGlassButton()
         .help(membersVisible ? "Hide members" : "Show members")
         .accessibilityLabel(membersVisible ? "Hide members" : "Show members")
       }
-      ConnectionStatusView()
-        .frame(maxWidth: 150)
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 10)
     .background(.bar)
+    .overlay(alignment: .bottom) { Divider() }
   }
 }
 
@@ -670,7 +668,7 @@ private struct ConversationMembersSidebar: View {
         }
       }
     }
-    .background(.bar)
+    .background { SidebarSurface() }
     .sheet(item: $selectedUser) { user in PersonProfileSheet(userID: user.id) }
   }
 
