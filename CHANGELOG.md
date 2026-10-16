@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.3.1
+
+- Rebuild Mac navigation with native split views sized to the visible window. Fix oversized list viewports that obscured the first rows and made scrolling back to the top unreliable.
+- Keep sidebar identity/account controls and conversation search/filters outside the scrolling lists. Preserve independent pane scrolling through resizing and section changes.
+- Replace heavy conversation cards with lighter selection and hover states, full-width names, compact date metadata, and clearer unread/draft/mute information.
+- Unify sidebar colors, simplify navigation icons and empty states, and draw continuous rounded button shapes consistently across supported OS versions.
+- Add a populated-window regression check with native wheel input, viewport bounds, scroll-to-top, resizing, and section navigation.
+- Skip repeated release packaging once a tag already has all five install assets, while still building missing or partial releases.
+
 ## 2.3.0
 
 - Add native Forums with community discovery, joined filters, discussion search and sorting, Markdown previews, attachments, persistent drafts, replies, voting, and sharing. Forum owners can pin, close, and delete discussions; authors can edit their own posts according to server permissions.

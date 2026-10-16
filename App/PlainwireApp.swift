@@ -20,6 +20,7 @@ struct PlainwireApp: App {
       }
       .defaultSize(width: 1180, height: 760)
       .windowResizability(.contentMinSize)
+      .windowToolbarStyle(.unified)
       .commands {
         CommandGroup(after: .newItem) {
           Button("New Conversation") { model.showNewConversation = true }

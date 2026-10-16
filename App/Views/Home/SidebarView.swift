@@ -12,31 +12,43 @@ struct SidebarView: View {
   }
 
   var body: some View {
+    VStack(spacing: 0) {
+      sidebarHeader
+      navigationList
+      accountFooter
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background { SidebarSurface() }
+    .clipped()
+  }
+
+  private var sidebarHeader: some View {
+    HStack(spacing: 10) {
+      PlainwireMark(size: 28)
+      VStack(alignment: .leading, spacing: 3) {
+        Text("Plainwire").font(.headline)
+        Text(model.serverDisplayName).font(.caption).foregroundStyle(.secondary)
+          .lineLimit(1).truncationMode(.middle)
+      }
+      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 14)
+    .accessibilityElement(children: .combine)
+    .accessibilityIdentifier("plainwire.sidebarHeader")
+  }
+
+  private var navigationList: some View {
     List(selection: Binding<AppModel.Section?>(
       get: { model.selectedSection },
       set: { if let section = $0 { model.selectedSection = section } })) {
       Section {
-        HStack(spacing: 10) {
-          PlainwireMark(size: 30)
-          VStack(alignment: .leading, spacing: 1) {
-            Text("Plainwire").font(.headline)
-            Text(model.serverDisplayName).font(.caption2).foregroundStyle(.secondary)
-              .lineLimit(1).truncationMode(.middle)
-          }
-        }
-        .padding(.vertical, 5)
-        .listRowSeparator(.hidden)
-      }
-
-      Section("Browse") {
         ForEach(navigationSections) { section in
           HStack {
             HStack(spacing: 10) {
-              Image(systemName: section.systemImage).font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(section.accent).frame(width: 28, height: 28)
-                .background(section.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-              Text(section.title).fontWeight(model.selectedSection == section ? .semibold : .medium)
-            }.padding(.vertical, 3)
+              Image(systemName: section.systemImage).font(.system(size: 15, weight: .medium))
+                .foregroundStyle(section.accent).frame(width: 24, height: 24)
+              Text(section.title).font(.body.weight(model.selectedSection == section ? .semibold : .medium))
+            }.padding(.vertical, 4)
             Spacer()
             let count = section == .messages ? model.unreadMessageCount : section == .activity ? model.unreadActivityCount : 0
             if count > 0 {
@@ -59,11 +71,11 @@ struct SidebarView: View {
               HStack(spacing: 10) {
                 RemoteAvatar(
                   url: model.mediaURL(server.iconURL), fallback: String(server.name.prefix(1)),
-                  size: 28, cornerRadius: 8)
+                  size: 26, cornerRadius: 8)
                 Text(server.name).lineLimit(1)
                 Spacer(minLength: 0)
               }
-              .contentShape(Rectangle())
+              .padding(.vertical, 3).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
           }
@@ -72,14 +84,17 @@ struct SidebarView: View {
     }
     .listStyle(.sidebar)
     .scrollContentBackground(.hidden)
-    .navigationTitle("Plainwire")
-    .safeAreaInset(edge: .bottom) {
+    .frame(minHeight: 0, maxHeight: .infinity)
+    .clipped()
+  }
+
+  private var accountFooter: some View {
       VStack(spacing: 10) {
         if let user = model.session?.user {
           HStack(spacing: 10) {
             RemoteAvatar(
               url: model.mediaURL(user.avatarURL), fallback: String(user.displayName.prefix(1)),
-              size: 34)
+              size: 32)
             VStack(alignment: .leading, spacing: 3) {
               Menu {
                 ForEach(["online", "away", "busy", "invisible"], id: \.self) { status in
@@ -131,10 +146,8 @@ struct SidebarView: View {
           .accessibilityLabel("More tools")
         }
       }
-      .padding(.horizontal, 14)
+      .padding(.horizontal, 16)
       .padding(.vertical, 12)
-      .overlay(alignment: .top) { Divider().padding(.horizontal, 14) }
-    }
-    .background { SidebarSurface().ignoresSafeArea() }
+      .overlay(alignment: .top) { Divider().padding(.horizontal, 16) }
   }
 }

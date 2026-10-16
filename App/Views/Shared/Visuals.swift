@@ -186,22 +186,51 @@ struct AdaptiveGlassButtonModifier: ViewModifier {
   let prominent: Bool
 
   func body(content: Content) -> some View {
-    styled(content)
-      .buttonBorderShape(.roundedRectangle(radius: 10))
+    content.buttonStyle(PlainwireButtonStyle(prominent: prominent))
+  }
+}
+
+// Drawing the control shape here keeps continuous corners on older AppKit
+// button bezels too. These remain SwiftUI buttons with native actions,
+// keyboard shortcuts, roles, focus, and accessibility semantics.
+private struct PlainwireButtonStyle: ButtonStyle {
+  @Environment(\.controlSize) private var size
+  @Environment(\.isEnabled) private var enabled
+  @Environment(\.isFocused) private var focused
+  @Environment(\.colorSchemeContrast) private var contrast
+  let prominent: Bool
+
+  func makeBody(configuration: Configuration) -> some View {
+    let shape = RoundedRectangle(cornerRadius: size == .large || size == .extraLarge ? 12 : 9, style: .continuous)
+    configuration.label
+      .font(.body.weight(.medium))
+      .padding(.horizontal, size == .small || size == .mini ? 9 : 13)
+      .padding(.vertical, size == .small || size == .mini ? 6 : 9)
+      .frame(minHeight: minimumHeight)
+      .foregroundStyle(prominent ? Color.white : configuration.role == .destructive ? .red : .primary)
+      .background {
+        if prominent { shape.fill(.tint) }
+        else { shape.fill(Color.primary.opacity(configuration.isPressed ? 0.11 : 0.055)) }
+      }
+      .overlay {
+        shape.strokeBorder(focused ? Color.accentColor : Color.primary.opacity(contrast == .increased ? 0.32 : 0.10),
+          lineWidth: focused ? 2 : 1)
+      }
+      .opacity(enabled ? configuration.isPressed ? 0.78 : 1 : 0.42)
+      .contentShape(shape)
   }
 
-  @ViewBuilder private func styled(_ content: Content) -> some View {
-    if #available(iOS 26.0, macOS 26.0, *) {
-      if prominent {
-        content.buttonStyle(.glassProminent)
-      } else {
-        content.buttonStyle(.glass)
-      }
-    } else if prominent {
-      content.buttonStyle(.borderedProminent)
-    } else {
-      content.buttonStyle(.bordered)
+  private var minimumHeight: CGFloat {
+    #if os(iOS)
+    return 44
+    #else
+    switch size {
+    case .mini: return 24
+    case .small: return 28
+    case .large, .extraLarge: return 40
+    default: return 32
     }
+    #endif
   }
 }
 
@@ -304,11 +333,15 @@ struct SidebarSurface: View {
   @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
   var body: some View {
+    #if os(macOS)
+    Color.windowBackground
+    #else
     if reduceTransparency {
       Color.windowBackground
     } else {
       Rectangle().fill(.regularMaterial)
     }
+    #endif
   }
 }
 

@@ -93,7 +93,7 @@ struct AppRootView: View {
     #if os(iOS)
       if horizontalSizeClass == .compact { CompactRootView() } else { SplitRootView() }
     #else
-      SplitRootView()
+      MacRootView()
     #endif
   }
 
@@ -208,6 +208,78 @@ private struct CompactRootView: View {
   }
 }
 
+#if os(macOS)
+private struct MacRootView: View {
+  @Environment(AppModel.self) private var model
+  @State private var sidebarVisible = true
+
+  var body: some View {
+    GeometryReader { geometry in
+      HSplitView {
+        if sidebarVisible {
+          SidebarView()
+            .frame(minWidth: 200, idealWidth: 224, maxWidth: 280, maxHeight: .infinity)
+            .padding(.top, geometry.safeAreaInsets.top)
+        }
+        workspace
+          .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+          .padding(.top, geometry.safeAreaInsets.top)
+      }
+      .frame(width: geometry.size.width, height: geometry.size.height)
+      .clipped()
+    }
+    .background(Color.canvas)
+    .navigationTitle(windowTitle)
+    .toolbar {
+      ToolbarItem(placement: .navigation) {
+        Button("Toggle Sidebar", systemImage: "sidebar.left") { sidebarVisible.toggle() }
+          .keyboardShortcut("s", modifiers: [.command, .option])
+          .help("Show or hide navigation")
+      }
+    }
+  }
+
+  private var windowTitle: String {
+    if showsBrowser, let room = model.selectedRoom,
+      room.scope == (model.selectedSection == .messages ? "direct" : "channel") { return room.title }
+    return model.selectedSection.title
+  }
+
+  private var showsBrowser: Bool { model.selectedSection == .messages || model.selectedSection == .servers }
+
+  @ViewBuilder private var workspace: some View {
+    if showsBrowser {
+      HSplitView {
+        Group {
+          if model.selectedSection == .messages { ConversationListView(compactNavigation: false) }
+          else { ServerChannelBrowserView() }
+        }
+        .frame(minWidth: 290, idealWidth: 340, maxWidth: 440, maxHeight: .infinity)
+        NavigationStack {
+          if let room = model.selectedRoom,
+            room.scope == (model.selectedSection == .messages ? "direct" : "channel") {
+            ChatView()
+          } else {
+            EmptyDetailView(title: model.selectedSection == .messages ? "Your next conversation starts here" : "Choose a channel",
+              symbol: model.selectedSection == .messages ? "bubble.left.and.bubble.right" : "rectangle.3.group",
+              description: model.selectedSection == .messages ? "Select a conversation or start a new one." : "Pick a channel from your community to catch up.")
+          }
+        }
+        .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+      }
+    } else {
+      switch model.selectedSection {
+      case .forums: ForumsView()
+      case .friends: NavigationStack { FriendsView() }
+      case .activity: NavigationStack { ActivityView() }
+      case .settings: SettingsView(showNavigationTitle: true, detailPresentation: true)
+      case .messages, .servers: EmptyView()
+      }
+    }
+  }
+}
+#endif
+
 private struct SplitRootView: View {
   @Environment(AppModel.self) private var model
   @State private var visibility: NavigationSplitViewVisibility = .all
@@ -281,24 +353,29 @@ private struct EmptyDetailView: View {
   var body: some View {
     ZStack {
       AppBackdrop()
-      VStack(spacing: 22) {
-        Image(systemName: symbol).font(.system(size: 48, weight: .medium)).symbolRenderingMode(.hierarchical)
-          .foregroundStyle(LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
-          .frame(width: 120, height: 120)
-          .background(Color.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 36, style: .continuous))
+      VStack(spacing: 20) {
+        Image(systemName: symbol).font(.system(size: 36, weight: .regular)).symbolRenderingMode(.hierarchical)
+          .foregroundStyle(Color.accentColor)
+          .frame(width: 84, height: 84)
+          .background(Color.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 25, style: .continuous))
         VStack(spacing: 10) {
-          Text(title).font(.system(.title, design: .rounded, weight: .bold))
+          Text(title).font(.title2.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
           Text(description).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }.multilineTextAlignment(.center)
-        HStack(spacing: 12) {
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: 10) { emptyActions }
+          VStack(spacing: 10) { emptyActions }
+        }
+      }.padding(28).frame(maxWidth: 440)
+    }
+  }
+
+  @ViewBuilder private var emptyActions: some View {
           if model.selectedSection == .messages {
             Button("New Conversation", systemImage: "square.and.pencil") { model.showNewConversation = true }
               .adaptiveGlassButton(prominent: true)
           }
           Button("Explore Forums", systemImage: "text.bubble") { model.openForums() }.adaptiveGlassButton()
-        }
-      }.padding(32).frame(maxWidth: 500)
-    }
   }
 }
 

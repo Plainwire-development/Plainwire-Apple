@@ -9,25 +9,22 @@ struct ConversationListView: View {
   private enum ConversationFilter: String, CaseIterable { case all = "All", unread = "Unread", requests = "Requests" }
 
   var body: some View {
-    List {
-      Section {
-        Picker("Show", selection: $filter) {
-          ForEach(ConversationFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-        }.pickerStyle(.segmented).listRowSeparator(.hidden)
-      }
+    VStack(spacing: 0) {
+      browserHeader
+      Divider()
       if let warning = model.syncWarning {
-        Section {
-          HStack(alignment: .top, spacing: 9) {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-            Text(warning).font(.caption).foregroundStyle(.secondary)
-          }
-          .padding(.vertical, 4)
+        HStack(alignment: .top, spacing: 9) {
+          Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+          Text(warning).font(.caption).foregroundStyle(.secondary)
         }
+        .padding(12)
       }
-
-      Section {
+      List {
         ForEach(filteredConversations) { conversation in
           conversationDestination(conversation)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10))
             .contextMenu {
               Button(model.isConversationMuted(conversation) ? "Unmute on This Device" : "Mute on This Device",
                 systemImage: model.isConversationMuted(conversation) ? "bell" : "bell.slash") {
@@ -45,19 +42,21 @@ struct ConversationListView: View {
             }
         }
       }
-    }
-    .modifier(ConversationListStyleModifier())
-    .scrollContentBackground(.hidden)
-    .background(AppBackdrop())
-    .overlay {
-      if filteredConversations.isEmpty {
-        ContentUnavailableView(
-          search.isEmpty ? "No messages yet" : "No matching conversations",
-          systemImage: search.isEmpty ? "message" : "magnifyingglass",
-          description: Text(
-            search.isEmpty ? "Start a conversation from Friends." : "Try another name or message."))
+      .modifier(ConversationListStyleModifier())
+      .scrollContentBackground(.hidden)
+      .frame(minHeight: 0, maxHeight: .infinity)
+      .overlay {
+        if filteredConversations.isEmpty {
+          ContentUnavailableView(emptyTitle, systemImage: search.isEmpty ? "message" : "magnifyingglass",
+            description: Text(search.isEmpty ? "New conversations will appear here." : "Try another name or message."))
+        }
       }
+      .clipped()
     }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Color.canvas)
+    .clipped()
+    #if os(iOS)
     .navigationTitle("Messages")
     .searchable(text: $search, prompt: "Filter conversations")
     .toolbar {
@@ -70,6 +69,7 @@ struct ConversationListView: View {
           .help("Search all messages").accessibilityLabel("Search all messages")
       }
     }
+    #endif
     .confirmationDialog("Leave this conversation?", isPresented: Binding(
       get: { leaving != nil }, set: { if !$0 { leaving = nil } }
     ), titleVisibility: .visible) {
@@ -78,6 +78,51 @@ struct ConversationListView: View {
       }
     }
     .refreshable { await model.refresh() }
+  }
+
+  private var browserHeader: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      #if os(macOS)
+      HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 3) {
+          Text("Conversations").font(.title3.weight(.semibold))
+          Text("\(filteredConversations.count) \(filter == .requests ? "requests" : "conversations")")
+            .font(.caption).foregroundStyle(.secondary)
+        }
+        Spacer(minLength: 0)
+        Button { model.showMessageSearch = true } label: { Image(systemName: "text.magnifyingglass").frame(width: 18, height: 18) }
+          .adaptiveGlassButton().controlSize(.small).help("Search all messages").accessibilityLabel("Search all messages")
+        Button { model.showNewConversation = true } label: { Image(systemName: "square.and.pencil").frame(width: 18, height: 18) }
+          .adaptiveGlassButton(prominent: true).controlSize(.small).help("New conversation").accessibilityLabel("New conversation")
+      }
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("plainwire.conversationHeader")
+      HStack(spacing: 8) {
+        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+        TextField("Filter conversations", text: $search).textFieldStyle(.plain)
+          .accessibilityLabel("Filter conversations")
+        if !search.isEmpty {
+          Button { search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+            .buttonStyle(.plain).accessibilityLabel("Clear conversation filter")
+        }
+      }
+      .padding(10).background(Color.panel, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+      .overlay { RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.primary.opacity(0.09), lineWidth: 1) }
+      #endif
+      Picker("Show conversations", selection: $filter) {
+        ForEach(ConversationFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+      }.pickerStyle(.segmented).labelsHidden()
+    }
+    .padding(14)
+  }
+
+  private var emptyTitle: String {
+    if !search.isEmpty { return "No matching conversations" }
+    switch filter {
+    case .all: return "No conversations yet"
+    case .unread: return "All caught up"
+    case .requests: return "No message requests"
+    }
   }
 
   private var filteredConversations: [PWConversation] {
@@ -111,9 +156,6 @@ struct ConversationListView: View {
         ConversationRow(conversation: conversation)
       }
       .buttonStyle(.plain)
-      .listRowBackground(Color.clear)
-      .listRowSeparator(.hidden)
-      .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
     }
   }
 }
@@ -121,69 +163,53 @@ struct ConversationListView: View {
 private struct ConversationRow: View {
   @Environment(AppModel.self) private var model
   let conversation: PWConversation
+  @State private var hovering = false
 
   var body: some View {
-    HStack(spacing: 12) {
-      ZStack(alignment: .bottomTrailing) {
-        RemoteAvatar(
+    HStack(alignment: .top, spacing: 11) {
+      RemoteAvatar(
           url: model.mediaURL(model.conversationDisplayAvatar(conversation)),
-          fallback: String(model.conversationDisplayName(conversation).prefix(1)), size: 46)
-        if conversation.unread > 0 {
-          Circle()
-            .fill(Color.accentColor)
-            .frame(width: 12, height: 12)
-            .overlay(Circle().stroke(.background, lineWidth: 2))
-        }
-      }
+          fallback: String(model.conversationDisplayName(conversation).prefix(1)), size: 40)
 
       VStack(alignment: .leading, spacing: 4) {
         HStack(spacing: 8) {
           Text(model.conversationDisplayName(conversation))
             .font(.body.weight(conversation.unread > 0 ? .semibold : .medium))
-            .lineLimit(1)
-          Spacer(minLength: 6)
-          if conversation.updatedAt > 0 {
-            Text(conversationDate)
-              .font(.caption2)
-              .foregroundStyle(.tertiary)
+            .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading).layoutPriority(1)
+          if conversation.unread > 0 {
+            Text(conversation.unread > 99 ? "99+" : "\(conversation.unread)")
+              .font(.caption2.bold()).foregroundStyle(.white).monospacedDigit()
+              .padding(.horizontal, 6).padding(.vertical, 2).background(Color.accentColor, in: Capsule())
               .fixedSize()
           }
         }
 
-        HStack(spacing: 7) {
+        Text(preview).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+          .frame(maxWidth: .infinity, alignment: .leading)
+        HStack(spacing: 6) {
           if model.calls.activeCalls[conversation.id] != nil {
             Image(systemName: "phone.fill").foregroundStyle(.green)
               .accessibilityLabel("Call in progress")
           }
-          Text(preview)
-            .font(.subheadline)
-            .foregroundStyle(conversation.unread > 0 ? .primary : .secondary)
-            .lineLimit(2)
-          Spacer(minLength: 4)
           if model.drafts["direct:\(conversation.id)"]?.isEmpty == false {
-            Text("Draft").font(.caption2.weight(.medium)).foregroundStyle(.orange)
+            Text("Draft").foregroundStyle(.orange)
+            Text("·").foregroundStyle(.tertiary)
           }
-          if model.isConversationMuted(conversation) { Image(systemName: "bell.slash").font(.caption2).foregroundStyle(.secondary) }
-          if conversation.unread > 0 {
-            Text("\(conversation.unread)")
-              .font(.caption2.bold())
-              .foregroundStyle(.white)
-              .monospacedDigit()
-              .padding(.horizontal, 7)
-              .padding(.vertical, 3)
-              .background(Color.accentColor, in: Capsule())
-          }
-        }
+          if conversation.updatedAt > 0 { Text(conversationDate).lineLimit(1) }
+          Spacer(minLength: 0)
+          if model.isConversationMuted(conversation) { Image(systemName: "bell.slash").accessibilityLabel("Muted on this device") }
+        }.font(.caption).foregroundStyle(.secondary)
       }
     }
-    .padding(12)
-    .background(selected ? Color.accentColor.opacity(0.09) : Color.panel,
-      in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    .padding(.horizontal, 12).padding(.vertical, 11).frame(maxWidth: .infinity, alignment: .leading)
+    .background(selected ? Color.accentColor.opacity(0.13) : Color.primary.opacity(hovering ? 0.04 : 0),
+      in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     .overlay {
-      RoundedRectangle(cornerRadius: 16, style: .continuous)
-        .strokeBorder(selected ? Color.accentColor.opacity(0.24) : .primary.opacity(0.055), lineWidth: 1)
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .strokeBorder(selected ? Color.accentColor.opacity(0.22) : .clear, lineWidth: 1)
     }
-    .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    .onHover { hovering = $0 }
   }
 
   private var selected: Bool { model.selectedRoom?.scope == "direct" && model.selectedRoom?.roomID == conversation.id }
@@ -212,6 +238,9 @@ private struct ConversationRow: View {
       return date.formatted(date: .omitted, time: .shortened)
     }
     if Calendar.current.isDateInYesterday(date) { return "Yesterday" }
+    if Calendar.current.isDate(date, equalTo: Date(), toGranularity: .year) {
+      return date.formatted(.dateTime.month(.abbreviated).day())
+    }
     return date.formatted(date: .abbreviated, time: .omitted)
   }
 }
@@ -219,7 +248,7 @@ private struct ConversationRow: View {
 private struct ConversationListStyleModifier: ViewModifier {
   @ViewBuilder func body(content: Content) -> some View {
     #if os(macOS)
-      content.listStyle(.inset)
+      content.listStyle(.plain)
     #else
       content.listStyle(.insetGrouped)
     #endif

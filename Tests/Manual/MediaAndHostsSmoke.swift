@@ -38,6 +38,7 @@ enum MediaAndHostsSmoke {
     try check(model.sessionState == .signedOut, "Fresh host should require sign in")
     let firstLogin = await model.login(username: "fixture", password: "fixture")
     try check(firstLogin && model.session?.user.displayName == "Host A", "Host A login failed")
+    try await NavigationSmoke.run(model: model)
     try await ForumsSmoke.run(model: model)
     let gifPage = try await model.searchGIFs("hello & 🎉")
     guard let gif = gifPage.results.first else { throw Failure.check("GIF search did not use the host API") }

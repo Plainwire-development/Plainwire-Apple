@@ -66,7 +66,7 @@ struct PageHeader: View {
       VStack(alignment: .leading, spacing: 6) {
         if let eyebrow {
           Text(eyebrow.uppercased()).font(.caption2.weight(.bold)).tracking(1.5)
-            .foregroundStyle(accent)
+            .foregroundStyle(.secondary)
         }
         Text(title).font(.system(.largeTitle, design: .rounded, weight: .bold))
           .fixedSize(horizontal: false, vertical: true).accessibilityAddTraits(.isHeader)
@@ -90,8 +90,9 @@ struct StatPill: View {
   let symbol: String
   var tint: Color = .accentColor
   var body: some View {
-    Label(title, systemImage: symbol)
-      .font(.caption.weight(.medium)).foregroundStyle(tint)
+    Label { Text(title).foregroundStyle(Color.primary) }
+      icon: { Image(systemName: symbol).foregroundStyle(tint) }
+      .font(.caption.weight(.medium))
       .padding(.horizontal, 10).padding(.vertical, 6)
       .background(tint.opacity(0.09), in: Capsule())
       .accessibilityElement(children: .combine)
@@ -104,9 +105,9 @@ struct InlineNotice: View {
   var tint: Color = .orange
   var body: some View {
     Label {
-      Text(text).fixedSize(horizontal: false, vertical: true)
-    } icon: { Image(systemName: symbol) }
-      .font(.callout).foregroundStyle(tint)
+      Text(text).foregroundStyle(Color.primary).fixedSize(horizontal: false, vertical: true)
+    } icon: { Image(systemName: symbol).foregroundStyle(tint) }
+      .font(.callout)
       .padding(14).frame(maxWidth: .infinity, alignment: .leading)
       .background(tint.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
       .accessibilityElement(children: .combine)
