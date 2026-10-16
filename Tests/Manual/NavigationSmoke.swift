@@ -47,8 +47,14 @@ import SwiftUI
     }
     model.serverDetails[501] = try decode(["server": servers[0], "channels": channels, "members": members])
     model.selectedSection = .messages
-    model.selectedRoom = nil
     model.selectedServerID = 501
+    // Load fixture data before mounting the UI. A fixed layout delay is not a
+    // network completion signal, and clearing a loaded room bypasses its cache.
+    model.selectedRoom = .init(scope: "channel", roomID: 801, title: "First channel")
+    await model.loadSelectedRoom()
+    try check(!(model.roomMessages["channel:801"] ?? []).isEmpty,
+      "The channel fixture failed to load: \(model.errorMessage ?? "empty response")")
+    model.selectedRoom = nil
 
     let controller = NSHostingController(rootView: AppRootView().environment(model).frame(minWidth: 920, minHeight: 620))
     let window = NSWindow(contentViewController: controller)
@@ -75,7 +81,6 @@ import SwiftUI
     for section in [AppModel.Section.servers, .friends, .activity, .forums, .messages] {
       model.selectedRoom = section == .servers ? .init(scope: "channel", roomID: 801, title: "First channel") : nil
       model.selectedChannelID = 801
-      model.roomMessages["channel:801"] = []
       model.selectedSection = section
       try await settle(controller.view)
       try verifyBounds(controller.view)

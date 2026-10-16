@@ -237,6 +237,9 @@ def handler_for(name):
             elif self.path == "/api/notifications":
                 self.reply(200, {"ok": True, "data": []})
             elif self.path.startswith("/api/messages?"):
+                # Layout checks must await fixture data, including on slower
+                # runners, instead of treating a 200 ms redraw as a loaded chat.
+                time.sleep(0.35)
                 query = parse_qs(urlsplit(self.path).query)
                 scope = query.get("scope", ["channel"])[0]
                 scope_id = int(query.get("scope_id", ["801"])[0])
