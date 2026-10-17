@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.3.3
+
+- Fix the Mac toolbar crash when closing More Tools / Source Hub or switching searchable pages. Keep page searches outside the native window toolbar so SwiftUI cannot insert its shared search item twice.
+- Give forum, discussion, people, GIF, and forwarding searches reserved, rounded Mac headers with Command-F focus and clear controls. Preserve native iOS search presentation.
+- Add real SwiftUI app-window regression checks for rapid page changes, workspace dismissal, restored forum navigation, and search keyboard input. Compile native smoke checks for the app's macOS 15 deployment target and run them on macOS 26 and 27 in CI.
+
 ## 2.3.2
 
 - Fix the extra translucent title-bar backgrounds covering server and chat headers by keeping Mac navigation panes in a single native split view.

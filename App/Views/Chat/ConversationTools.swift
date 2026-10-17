@@ -293,7 +293,7 @@ struct ForwardMessageSheet: View {
           }.padding(.vertical, 5)
         }.buttonStyle(.plain).disabled(sending)
       }
-      .searchable(text: $search, prompt: "Choose a conversation or channel")
+      .pageSearch(text: $search, prompt: "Choose a conversation or channel")
       .navigationTitle(sending ? "Forwarding…" : "Forward Message")
       .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(sending) } }
     }.adaptiveSheetSize(minWidth: 360, idealWidth: 460, minHeight: 420)

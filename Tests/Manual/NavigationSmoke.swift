@@ -173,7 +173,7 @@ import SwiftUI
     clip.scroll(to: topPoint)
     scroll.reflectScrolledClipView(clip)
     let top = clip.bounds.origin.y
-    let point = scroll.convert(NSPoint(x: scroll.bounds.midX, y: scroll.bounds.midY), to: root)
+    let point = scroll.convert(NSPoint(x: scroll.bounds.midX, y: scroll.bounds.midY), to: root.superview)
     if let hit = root.hitTest(point) {
       try check(hit === scroll || hit.isDescendant(of: scroll), "An overlay intercepted list input")
     } else { throw Failure.check("The visible list could not receive input") }

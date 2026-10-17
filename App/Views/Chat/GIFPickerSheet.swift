@@ -62,7 +62,7 @@ struct GIFPickerSheet: View {
           }
         }
       }
-      .searchable(text: $query, prompt: "Search GIFs")
+      .pageSearch(text: $query, prompt: "Search GIFs")
       .navigationTitle("Choose a GIF")
       .toolbar {
         ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction) }

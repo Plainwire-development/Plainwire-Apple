@@ -15,7 +15,6 @@ struct FriendsView: View {
 
   var body: some View {
     ZStack {
-      AppBackdrop()
       List {
         Section {
           PageHeader(title: "Friends", subtitle: "See who’s around and pick up a conversation.", symbol: "person.2.fill",
@@ -91,8 +90,9 @@ struct FriendsView: View {
       .modifier(FriendsListStyleModifier())
       .frame(maxWidth: 1000).frame(maxWidth: .infinity)
     }
+    .background(AppBackdrop())
     .navigationTitle("Friends")
-    .searchable(text: $search, prompt: "Find people")
+    .pageSearch(text: $search, prompt: "Find people")
     .task(id: search) {
       results = []
       guard search.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else { searching = false; return }

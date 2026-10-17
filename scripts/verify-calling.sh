@@ -17,7 +17,8 @@ xcodebuild -quiet -project Plainwire.xcodeproj -scheme Plainwire \
   CODE_SIGNING_ALLOWED=NO build
 
 frameworks_dir=$build_dir/Build/Products/Debug
-xcrun swiftc -swift-version 6 -warnings-as-errors \
+native_target=$(uname -m)-apple-macos15.0
+xcrun swiftc -swift-version 6 -target "$native_target" -warnings-as-errors \
   -F "$frameworks_dir" -framework WebRTC \
   -Xlinker -rpath -Xlinker "$frameworks_dir" \
   Sources/PlainwireCore/*.swift App/Calling/CallController.swift \
@@ -29,10 +30,17 @@ app_sources=()
 while IFS= read -r source; do app_sources+=("$source"); done < <(
   find App Sources -type f -name '*.swift' ! -name 'PlainwireApp.swift' | sort
 )
-xcrun swiftc -swift-version 6 -O -warnings-as-errors \
+xcrun swiftc -swift-version 6 -target "$native_target" -whole-module-optimization -O -warnings-as-errors \
   -F "$frameworks_dir" -framework WebRTC \
   -Xlinker -rpath -Xlinker "$frameworks_dir" \
   "${app_sources[@]}" \
   Tests/Manual/CallPanelSmoke.swift Tests/Manual/MediaAndHostsSmoke.swift Tests/Manual/ForumsSmoke.swift Tests/Manual/NavigationSmoke.swift \
   -o "$build_dir/plainwire-call-panel-smoke"
 python3 Tests/Manual/HostFixture.py "$build_dir/plainwire-call-panel-smoke"
+
+xcrun swiftc -swift-version 6 -target "$native_target" -whole-module-optimization -O -warnings-as-errors \
+  -F "$frameworks_dir" -framework WebRTC \
+  -Xlinker -rpath -Xlinker "$frameworks_dir" \
+  "${app_sources[@]}" Tests/Manual/WindowLifecycleSmoke.swift \
+  -o "$build_dir/plainwire-window-lifecycle-smoke"
+python3 Tests/Manual/HostFixture.py "$build_dir/plainwire-window-lifecycle-smoke"

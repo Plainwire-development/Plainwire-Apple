@@ -87,7 +87,7 @@ struct ForumsView: View {
     }
     .background(AppBackdrop())
     .navigationTitle("Forums")
-    .searchable(text: $search, prompt: "Find a forum")
+    .pageSearch(text: $search, prompt: "Find a forum")
     .refreshable { await store.refreshVisible() }
     .toolbar {
       ToolbarItem(placement: .primaryAction) {
@@ -228,7 +228,7 @@ struct ForumBoardView: View {
     }
     .background(AppBackdrop())
     .navigationTitle(forum?.name ?? "Forum")
-    .searchable(text: $query, prompt: "Search discussions")
+    .pageSearch(text: $query, prompt: "Search discussions")
     .task(id: forumID) {
       if forum == nil { await store.loadForums() }
       await store.loadThreads(forumID: forumID, query: query)

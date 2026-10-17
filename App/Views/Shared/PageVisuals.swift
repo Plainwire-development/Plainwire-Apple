@@ -40,6 +40,71 @@ extension View {
   func cardSurface(cornerRadius: CGFloat = 20) -> some View {
     modifier(CardSurface(radius: cornerRadius))
   }
+
+  func pageSearch(text: Binding<String>, prompt: LocalizedStringKey) -> some View {
+    modifier(PageSearchModifier(text: text, prompt: prompt))
+  }
+}
+
+private struct PageSearchModifier: ViewModifier {
+  @Binding var text: String
+  let prompt: LocalizedStringKey
+  #if os(macOS)
+    @FocusState private var focused: Bool
+    @Environment(\.colorSchemeContrast) private var contrast
+  #endif
+
+  func body(content: Content) -> some View {
+    #if os(macOS)
+      // SwiftUI gives every .searchable field the same NSToolbar identifier.
+      // Replacing pages or dismissing a sheet can insert it twice and raise an
+      // AppKit exception. Keep Mac search in the page's reserved header area.
+      VStack(spacing: 0) {
+        HStack(spacing: 8) {
+          Image(systemName: "magnifyingglass")
+            .foregroundStyle(.secondary).accessibilityHidden(true)
+          TextField(prompt, text: $text)
+            .textFieldStyle(.plain)
+            .focused($focused)
+            .accessibilityIdentifier("plainwire.pageSearch")
+            .onExitCommand {
+              if text.isEmpty { focused = false }
+              else { text = "" }
+            }
+          if !text.isEmpty {
+            Button { text = "" } label: {
+              Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain).accessibilityLabel("Clear search")
+          }
+        }
+        .padding(.horizontal, 11).padding(.vertical, 9)
+        .background(Color.panel, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+          RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .strokeBorder(focused ? Color.accentColor : .primary.opacity(contrast == .increased ? 0.3 : 0.12),
+              lineWidth: focused ? 2 : 1)
+        }
+        .frame(maxWidth: 1120)
+        .padding(.horizontal, 20).padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
+        .background(Color.canvas, ignoresSafeAreaEdges: [])
+        .overlay(alignment: .bottom) { Divider() }
+        .background {
+          Button("Find") { focused = true }
+            .keyboardShortcut("f", modifiers: .command)
+            .hidden().accessibilityHidden(true)
+        }
+        .zIndex(1)
+        GeometryReader { geometry in
+          content.frame(width: geometry.size.width, height: geometry.size.height).clipped()
+        }
+        .clipped()
+      }
+    #else
+      content.searchable(text: $text, prompt: prompt)
+    #endif
+  }
 }
 
 struct PageHeader: View {

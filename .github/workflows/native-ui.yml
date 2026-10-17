@@ -1,6 +1,21 @@
 name: Native UI diagnostics
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'App/**'
+      - 'Sources/**'
+      - 'Tests/Manual/**'
+      - 'scripts/verify-calling.sh'
+      - '.github/workflows/native-ui.yml'
+  pull_request:
+    paths:
+      - 'App/**'
+      - 'Sources/**'
+      - 'Tests/Manual/**'
+      - 'scripts/verify-calling.sh'
+      - '.github/workflows/native-ui.yml'
   workflow_dispatch:
 
 permissions:
@@ -8,10 +23,15 @@ permissions:
 
 jobs:
   native-ui:
-    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-26, xcode-27]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4.4.0
       - name: Use Xcode 26.6
+        if: matrix.runner == 'macos-26'
         run: sudo xcode-select -s /Applications/Xcode_26.6.app
       - name: Native UI checks
         run: script -q /dev/null ./scripts/verify-calling.sh
@@ -22,7 +42,9 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: native-ui-layouts
-          path: /tmp/plainwire-navigation-*.png
+          name: native-ui-layouts-${{ matrix.runner }}
+          path: |
+            /tmp/plainwire-navigation-*.png
+            /tmp/plainwire-window-search-*.png
           if-no-files-found: ignore
           retention-days: 7
